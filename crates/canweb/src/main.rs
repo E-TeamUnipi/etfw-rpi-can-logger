@@ -162,7 +162,9 @@ async fn api_stream(State(app): St) -> Response {
 
 async fn cors(State(app): St, req: Request, next: Next) -> Response {
     let origin = req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::to_string);
-    let allowed = origin.filter(|o| app.origins.iter().any(|a| a == o || a == "*"));
+    // app_origin, plus pages served from this computer (a local copy of the app)
+    let loopback = |o: &str| ["http://localhost", "http://127.0.0.1", "http://[::1]"].iter().any(|l| o == *l || o.strip_prefix(l).is_some_and(|r| r.starts_with(':')));
+    let allowed = origin.filter(|o| loopback(o) || app.origins.iter().any(|a| a == o || a == "*"));
     let preflight = req.method() == Method::OPTIONS;
     let mut resp = if preflight { StatusCode::NO_CONTENT.into_response() } else { next.run(req).await };
     let h = resp.headers_mut();

@@ -110,6 +110,23 @@ async function pollWifi() {
   }
 }
 
+/** Why a connection failed. A no-cors request succeeds when the logger is
+ *  reachable but refuses this page (origin not in app_origin), or when the
+ *  browser blocks only the readable request. */
+async function reachHint(e) {
+  const base = `Cannot reach ${logger.addr}: ${e.message}.`;
+  if (!(e instanceof TypeError)) return base;
+  let reachable = false;
+  try {
+    await fetch(`http://${logger.addr}/api/status`, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(3000), ...lna() });
+    reachable = true;
+  } catch {}
+  if (reachable) {
+    return `${base} The logger answers but does not accept requests from ${location.origin}: add it to app_origin in logger.conf (or allow "local network access" if Chrome asked).`;
+  }
+  return `${base} Join the logger's Wi-Fi. In Chrome allow "local network access" when asked; on macOS also allow Chrome in System Settings → Privacy & Security → Local Network.`;
+}
+
 export async function connectWifi(addr) {
   await disconnect();
   logger.addr = addr || logger.addr;
@@ -119,7 +136,7 @@ export async function connectWifi(addr) {
     setStatus(fromWifi(await http('/api/status')));
   } catch (e) {
     logger.kind = null;
-    setState('idle', `Cannot reach ${logger.addr}: ${e.message}. Join the logger's Wi-Fi, and allow "local network access" when the browser asks.`);
+    setState('idle', await reachHint(e));
     throw e;
   }
   setState('connected');
