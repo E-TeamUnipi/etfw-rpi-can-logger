@@ -1,0 +1,40 @@
+#!/bin/sh
+# Early init. Must be fast: no fsck, no waiting for devices.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts -o gid=5,mode=620,ptmxmode=0666 devpts /dev/pts
+mount -t tmpfs -o mode=0755,nosuid,nodev,size=32M tmpfs /run
+mount -t tmpfs -o mode=1777,nosuid,nodev,size=64M tmpfs /tmp
+mount -t tmpfs -o mode=0755,nosuid,nodev,size=8M tmpfs /var/lib
+mkdir -p /run/lock /var/lib/dbus /var/lib/bluetooth /var/lib/misc
+ln -sf /etc/machine-id /var/lib/dbus/machine-id
+ln -sf /proc/self/fd /dev/fd
+ln -sf /proc/self/fd/0 /dev/stdin
+ln -sf /proc/self/fd/1 /dev/stdout
+ln -sf /proc/self/fd/2 /dev/stderr
+
+# boot partition (config) read-only: a power cut can never damage it
+mount -t vfat -o ro,noatime,fmask=0133,dmask=0022 /dev/mmcblk0p1 /boot
+
+hostname -F /etc/hostname
+ip link set lo up
+
+# in-memory log, read with "logread" / "logread -f"
+syslogd -C512
+
+# hotplug + module loading (CAN drivers are built in, so this is off the
+# critical path)
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+mdev -s &
+
+. /usr/libexec/canlogger/functions
+[ "$(conf wifi on)" = off ] && echo boot > /run/wifi.disabled
+
+# first boot: create the raw ring partition in the free space
+/usr/libexec/canlogger/ring-partition
+
+exit 0

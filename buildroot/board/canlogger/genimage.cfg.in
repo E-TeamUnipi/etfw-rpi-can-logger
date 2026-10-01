@@ -1,0 +1,28 @@
+image boot.vfat {
+	vfat {
+		label = "BOOT"
+		files = {
+#BOOT_FILES#
+		}
+	}
+	size = 64M
+}
+
+image sdcard.img {
+	hdimage {
+	}
+
+	partition boot {
+		partition-type = 0xC
+		bootable = "true"
+		image = "boot.vfat"
+	}
+
+	partition rootfs {
+		partition-type = 0x83
+		image = "rootfs.ext4"
+	}
+
+	# Partition 3 (the raw CAN ring) is created on first boot and fills
+	# the rest of the card, whatever its size.
+}

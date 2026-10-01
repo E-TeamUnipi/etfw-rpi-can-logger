@@ -1,0 +1,1 @@
+root=/dev/mmcblk0p2 rootfstype=ext4 ro rootwait quiet loglevel=3 init=/sbin/init rcupdate.rcu_expedited=1 consoleblank=0

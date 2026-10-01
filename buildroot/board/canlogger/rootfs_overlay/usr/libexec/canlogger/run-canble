@@ -1,0 +1,6 @@
+#!/bin/sh
+. /usr/libexec/canlogger/functions
+[ "$(conf ble on)" = off ] && idle_forever
+[ -x /usr/bin/canble ] || idle_forever
+wait_for /run/dbus/system_bus_socket 30
+exec /usr/libexec/canlogger/run canble /usr/bin/canble

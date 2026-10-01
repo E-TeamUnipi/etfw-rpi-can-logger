@@ -1,0 +1,61 @@
+# Raspberry Pi firmware settings for the CAN logger (Pi 3, Pi 4 and Pi 5).
+# This file is on the FAT boot partition: you can edit it from any computer.
+
+kernel=Image
+arm_64bit=1
+
+# --- boot fast, headless -----------------------------------------------------
+disable_splash=1
+boot_delay=0
+avoid_warnings=1
+camera_auto_detect=0
+display_auto_detect=0
+disable_fw_kms_setup=1
+dtparam=audio=off
+
+# hardware watchdog (canlogd feeds it; a hung system reboots in ~15 s)
+dtparam=watchdog=on
+
+# Bluetooth attached by the kernel driver (needed for the BLE service)
+dtparam=krnbt=on
+
+# --- debugging ---------------------------------------------------------------
+# Serial console is off. To get a login on the GPIO UART (pins 8/10):
+#   1. set enable_uart=1 below
+#   2. add  console=serial0,115200  at the start of cmdline.txt
+#   (Pi 5: the 3-pin debug header is  console=ttyAMA10,115200 , no enable_uart needed)
+enable_uart=0
+
+# --- power-fail input --------------------------------------------------------
+# The logger watches the GPIO set in logger.conf (powerfail_gpio). Nothing to
+# do here unless you want a pull-up from the device tree instead:
+#gpio=17=ip,pu
+
+# --- SPI CAN HATs (optional, instead of or in addition to USB adapters) -----
+#dtparam=spi=on
+#dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
+#dtoverlay=mcp251xfd,spi0-0,interrupt=25
+
+[pi3]
+# cut-down GPU firmware: faster start, more RAM for Linux
+start_file=start_cd.elf
+fixup_file=fixup_cd.dat
+gpu_mem=16
+initial_turbo=30
+
+[pi4]
+# cut-down GPU firmware: faster start, more RAM for Linux
+start_file=start4cd.elf
+fixup_file=fixup4cd.dat
+gpu_mem=16
+# run the CPU at full speed for the first 30 s (faster boot)
+initial_turbo=30
+
+[pi5]
+# allow the full 1.6 A on USB even without the official 5 A supply
+# (CAN adapters draw ~100 mA each; only needed with several of them)
+usb_max_current_enable=1
+# Pi 5 RTC: charge a rechargeable backup cell (only if one is fitted!)
+#dtparam=rtc_bbat_vchg=3000000
+
+[all]

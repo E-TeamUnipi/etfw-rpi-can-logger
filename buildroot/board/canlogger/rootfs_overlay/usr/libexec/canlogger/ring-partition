@@ -1,0 +1,15 @@
+#!/bin/sh
+# Create partition 3 (raw CAN ring, type 0xda) in the free space after the
+# rootfs, on first boot only. canlogd formats it itself.
+DISK=/dev/mmcblk0
+[ -b "$DISK" ] || exit 0
+[ -b "${DISK}p3" ] && exit 0
+parts=$(ls "${DISK}"p* 2>/dev/null | wc -l)
+if [ "$parts" -ne 2 ]; then
+	logger -t ring-partition "unexpected partition layout on $DISK, not touching it"
+	exit 0
+fi
+logger -t ring-partition "creating ring partition ${DISK}p3"
+echo ',,da' | sfdisk --append --no-reread --no-tell-kernel --force -q "$DISK" 2>&1 | logger -t ring-partition
+partx -a -n 3 "$DISK" 2>&1 | logger -t ring-partition
+sync

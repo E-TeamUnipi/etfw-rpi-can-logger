@@ -1,0 +1,25 @@
+config BR2_PACKAGE_CANLOGGER
+	bool "canlogger"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	select BR2_PACKAGE_HOST_RUSTC
+	select BR2_PACKAGE_IPROUTE2 # "ip link set ... type can"
+	help
+	  CAN bus logger: canlogd (writes every frame from every
+	  SocketCAN interface to a raw ring partition), canweb (HTTP
+	  status page and downloads), canring (command line reader).
+
+if BR2_PACKAGE_CANLOGGER
+
+config BR2_PACKAGE_CANLOGGER_BLE
+	bool "Bluetooth LE service (canble)"
+	default y
+	depends on BR2_PACKAGE_BLUEZ5_UTILS
+	select BR2_PACKAGE_DBUS
+	help
+	  GATT service for status, live data, time sync and commands
+	  from a phone (Web Bluetooth).
+
+comment "canble needs bluez5_utils"
+	depends on !BR2_PACKAGE_BLUEZ5_UTILS
+
+endif

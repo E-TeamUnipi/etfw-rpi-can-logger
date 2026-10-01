@@ -1,0 +1,24 @@
+# CAN logger init (BusyBox). sysinit runs first and only mounts things
+# (~tens of ms); then every service below starts at once, logger first.
+# "respawn" = restarted by init if it exits or crashes.
+
+::sysinit:/etc/init/rc.sysinit
+
+::respawn:/usr/libexec/canlogger/run canlogd /usr/bin/canlogd
+::respawn:/usr/libexec/canlogger/run canweb /usr/bin/canweb
+::respawn:/usr/libexec/canlogger/run-hostapd
+::respawn:/usr/libexec/canlogger/run-dnsmasq
+::respawn:/usr/libexec/canlogger/run-dbus
+::respawn:/usr/libexec/canlogger/run-bluetoothd
+::respawn:/usr/libexec/canlogger/run-canble
+::respawn:/usr/libexec/canlogger/run-dropbear
+::once:/usr/libexec/canlogger/late-init
+
+# login on the console, if one is enabled in cmdline.txt (see config.txt)
+console::respawn:/sbin/getty -L console 0 vt100
+
+::ctrlaltdel:/sbin/reboot
+::shutdown:/usr/bin/killall -TERM canlogd
+::shutdown:/bin/sleep 1
+::shutdown:/bin/sync
+::shutdown:/bin/umount -a -r

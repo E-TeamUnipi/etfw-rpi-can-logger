@@ -1,0 +1,5 @@
+#!/bin/sh
+# run NAME COMMAND...  -> run a daemon with its output in the system log
+name=$1
+shift
+"$@" 2>&1 | logger -t "$name"

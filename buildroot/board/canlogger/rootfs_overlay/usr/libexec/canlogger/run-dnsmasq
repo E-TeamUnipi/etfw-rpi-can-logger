@@ -1,0 +1,20 @@
+#!/bin/sh
+# DHCP + DNS for hotspot clients. Every name resolves to the logger, so
+# http://anything/ opens the status page.
+. /usr/libexec/canlogger/functions
+IP=$(conf wifi_ip 192.168.4.1)
+NET=${IP%.*}
+
+# wait until the hotspot has its address
+while ! ip -4 addr show dev wlan0 2>/dev/null | grep -q "inet $IP/"; do sleep 1; done
+
+exec dnsmasq -k --conf-file=/dev/null \
+	--interface=wlan0 --bind-dynamic --except-interface=lo \
+	--dhcp-authoritative \
+	--dhcp-range="$NET.10,$NET.100,255.255.255.0,12h" \
+	--dhcp-option=option:router,"$IP" \
+	--dhcp-option=option:dns-server,"$IP" \
+	--dhcp-leasefile=/run/dnsmasq.leases \
+	--no-resolv --no-hosts \
+	--address="/#/$IP" \
+	--log-facility=- 2>&1 | logger -t dnsmasq

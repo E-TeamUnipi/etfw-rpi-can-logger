@@ -1,0 +1,17 @@
+[package]
+name = "canlog-core"
+description = "On-disk ring format, reader, exporters and control protocol shared by the CAN logger programs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+crc32fast = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[[bin]]
+name = "canring"
+path = "src/bin/canring.rs"

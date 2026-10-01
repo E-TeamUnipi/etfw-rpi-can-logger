@@ -1,0 +1,12 @@
+[package]
+name = "canble"
+description = "Bluetooth LE GATT service for the CAN logger (status, live data, time sync, commands)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+canlog-core.workspace = true
+serde_json.workspace = true
+bluer = { version = "0.17", features = ["bluetoothd"] }
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros", "sync"] }

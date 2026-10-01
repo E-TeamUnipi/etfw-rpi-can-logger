@@ -1,0 +1,39 @@
+# Builds the SD card images. Run it from the Actions tab, or push a v* tag.
+# The compressed images are attached to the run as artifacts.
+name: image
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [rpi3, rpi4, rpi5]
+    steps:
+      - uses: actions/checkout@v4
+      # the runner starts with ~14 GB free; a Pi build needs more
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bc cpio file libncurses-dev rsync unzip wget
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/canlogger/dl
+            ~/.cache/canlogger/ccache
+          key: buildroot-${{ matrix.board }}-${{ hashFiles('buildroot/configs/*', 'buildroot/board/**', 'Cargo.lock') }}
+          restore-keys: buildroot-${{ matrix.board }}-
+      - run: scripts/build-image.sh --native ${{ matrix.board }}
+      - run: xz -T0 -k output-${{ matrix.board }}/images/sdcard.img
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canlogger-${{ matrix.board }}
+          path: output-${{ matrix.board }}/images/sdcard.img.xz

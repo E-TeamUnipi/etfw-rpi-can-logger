@@ -1,0 +1,49 @@
+#!/bin/sh
+# Wi-Fi access point. Waits while /run/wifi.disabled exists (Wi-Fi switched
+# off in logger.conf or over Bluetooth).
+. /usr/libexec/canlogger/functions
+
+if [ -e /run/wifi.disabled ]; then
+	ip link set wlan0 down 2>/dev/null
+	rm -f /run/wifi.ssid
+	while [ -e /run/wifi.disabled ]; do sleep 1; done
+fi
+
+modprobe brcmfmac 2>/dev/null
+if ! wait_for /sys/class/net/wlan0 10; then
+	logger -t hostapd "no wlan0"
+	sleep 10
+	exit 1
+fi
+
+IP=$(conf wifi_ip 192.168.4.1)
+MAC=$(tr -d ':' < /sys/class/net/wlan0/address | tail -c 5 | tr a-f A-F)
+SSID=$(conf wifi_ssid "canlogger-$MAC")
+PASS=$(conf wifi_password canlogger)
+if [ ${#PASS} -lt 8 ]; then
+	logger -t hostapd "wifi_password must have at least 8 characters, using 'canlogger'"
+	PASS=canlogger
+fi
+
+ip addr flush dev wlan0
+ip addr add "$IP/24" dev wlan0
+ip link set wlan0 up
+
+cat > /run/hostapd.conf <<EOC
+interface=wlan0
+driver=nl80211
+ssid=$SSID
+country_code=$(conf wifi_country IT)
+ieee80211d=1
+hw_mode=g
+channel=$(conf wifi_channel 6)
+ieee80211n=1
+wmm_enabled=1
+auth_algs=1
+wpa=2
+wpa_key_mgmt=WPA-PSK
+rsn_pairwise=CCMP
+wpa_passphrase=$PASS
+EOC
+echo "$SSID" > /run/wifi.ssid
+hostapd /run/hostapd.conf 2>&1 | logger -t hostapd

@@ -1,0 +1,5 @@
+/target
+VENDOR/
+/buildroot-src
+/output*
+*.img

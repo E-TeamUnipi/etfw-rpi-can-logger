@@ -1,0 +1,16 @@
+[package]
+name = "canweb"
+description = "HTTP status page, live view and log downloads for the CAN logger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+canlog-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+tokio = { version = "1", features = ["rt", "net", "io-util", "time", "macros", "sync"] }
+tokio-stream = { version = "0.1", default-features = false }
+bytes = "1"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

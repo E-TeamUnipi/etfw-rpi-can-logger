@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>{{DEVICE_NAME}}</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#16181d;--mute:#6b7280;--line:#e5e7eb;--acc:#2563eb;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--fg:#e8eaed;--mute:#9aa1ab;--line:#2a2e36;--acc:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;font-weight:650;flex:1;min-width:120px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--line)}
+.pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.pill.ok i{animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+#clock{font:13px var(--mono);color:var(--mute)}
+main{max-width:980px;margin:0 auto;padding:12px 16px 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
+section h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:8px}
+section h2 span{flex:1}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:12px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
+.kv div b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+.kv div small{color:var(--mute);font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+input,select,button{font:inherit;color:inherit}
+input[type=text],select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+input[type=text]{flex:1 1 180px}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+.bus{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line)}
+.bus:first-of-type{border-top:0;padding-top:0}
+.bus .n{font-weight:650}
+.bus .n small{font-weight:400;color:var(--mute);margin-left:6px}
+.bus .meta{color:var(--mute);font-size:13px;grid-column:1/-1}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;grid-column:1/-1}
+.bar i{display:block;height:100%;background:var(--acc)}
+.badge{font-size:12px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--line)}
+.badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}.badge.bad{color:var(--bad)}
+.note{color:var(--warn);font-size:13px;grid-column:1/-1}
+.tablewrap{overflow-x:auto;max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 8px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{position:sticky;top:0;background:var(--card);color:var(--mute);font-weight:600;font-size:12px}
+td.m{font-family:var(--mono)}
+td.data{white-space:normal;min-width:18ch;max-width:52ch;word-break:break-word}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+tr.stale td{color:var(--mute)}
+.sess{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center}
+.sess:first-of-type{border-top:0}
+.sess .t{font-weight:600}
+.sess .d{color:var(--mute);font-size:13px}
+.sess .dl{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.sess .dl a{font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;text-decoration:none;color:var(--acc);font-weight:600}
+.live-tag{font-size:11px;background:var(--ok);color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.muted{color:var(--mute)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:.92}
+@media (max-width:560px){.sess{grid-template-columns:1fr}.sess .dl{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<header>
+  <h1>{{DEVICE_NAME}}</h1>
+  <span id="state" class="pill"><i></i><span>connecting</span></span>
+  <span id="clock"></span>
+</header>
+<main>
+  <div class="grid2">
+    <section>
+      <h2><span>Session <b id="sid"></b></span></h2>
+      <div class="kv">
+        <div><b id="dur">–</b><small>duration</small></div>
+        <div><b id="fps">–</b><small>frames/s</small></div>
+        <div><b id="frames">–</b><small>frames</small></div>
+        <div><b id="drop">–</b><small>dropped</small></div>
+      </div>
+      <div class="row">
+        <input type="text" id="name" placeholder="Name this recording" maxlength="40" autocomplete="off">
+        <button id="saveName">Save</button>
+      </div>
+      <div class="row">
+        <input type="text" id="markText" placeholder="Marker text (optional)" maxlength="120" autocomplete="off">
+        <button class="ghost" id="mark">Add marker</button>
+        <button class="ghost" id="newSess">New session</button>
+      </div>
+      <div class="row muted" id="timeinfo" style="font-size:13px"></div>
+    </section>
+    <section>
+      <h2><span>Storage</span></h2>
+      <div class="kv">
+        <div><b id="used">–</b><small>ring used</small></div>
+        <div><b id="cap">–</b><small>ring holds at this rate</small></div>
+        <div><b id="wr">–</b><small>write rate</small></div>
+        <div><b id="werr">–</b><small>write errors / lost</small></div>
+      </div>
+      <div class="row muted" id="power" style="font-size:13px"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2><span>Buses</span></h2>
+    <div id="buses"><span class="muted">No CAN adapters detected yet.</span></div>
+  </section>
+
+  <section>
+    <h2><span>Live data</span><button class="ghost" id="pause" style="padding:4px 10px;font-size:12px">Pause</button></h2>
+    <div class="row" style="margin:0 0 8px">
+      <input type="text" id="filter" placeholder="Filter by bus, ID or data" autocomplete="off">
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Bus</th><th>ID</th><th class="r">Len</th><th>Data</th><th class="r">Hz</th><th class="r">Count</th><th class="r">Age</th></tr></thead>
+        <tbody id="live"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span>Recordings</span><button class="ghost" id="refresh" style="padding:4px 10px;font-size:12px">Refresh</button></h2>
+    <div class="row" style="margin:0 0 10px">
+      <select id="range">
+        <option value="">Whole session</option>
+        <option value="60">Last 1 min</option>
+        <option value="600">Last 10 min</option>
+        <option value="3600">Last 1 h</option>
+      </select>
+      <select id="gz">
+        <option value="1">Compressed (.gz)</option>
+        <option value="0">Plain text</option>
+      </select>
+    </div>
+    <div id="sessions"><span class="muted">Loading…</span></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+let paused = false, lastStatus = null, currentSession = null, nameDirty = false;
+
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),2200)}
+function fmtDur(s){s=Math.floor(s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}h ${String(m).padStart(2,'0')}m`:m?`${m}m ${String(x).padStart(2,'0')}s`:`${x}s`}
+function fmtNum(n){return n==null?'–':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':String(n)}
+function fmtRate(v){return v==null?'–':v>=100?Math.round(v):v.toFixed(1)}
+function fmtTime(ms){if(ms==null)return null;const d=new Date(ms);return d.toLocaleString([], {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+async function api(path, body){
+  const r = await fetch(path, body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)} : {cache:'no-store'});
+  if(!r.ok) throw new Error((await r.json().catch(()=>({error:r.statusText}))).error);
+  return r.json();
+}
+
+async function timesync(){
+  try{ await api('/api/cmd', {cmd:'timesync', utc_ms: Date.now()}); }catch(e){}
+}
+
+function setState(cls, text){const p=$('state');p.className='pill '+cls;p.lastElementChild.textContent=text}
+
+function renderStatus(s){
+  lastStatus = s;
+  const map = {recording:['ok','Recording'],power_hold:['warn','Power lost – holding'],no_storage:['bad','No storage – RAM only'],starting:['warn','Starting'],stopped:['bad','Stopped']};
+  const [c,t] = map[s.state] || ['warn', s.state];
+  setState(c, s.sim ? t+' (sim)' : t);
+  $('clock').textContent = s.time.utc_ms ? new Date(s.time.utc_ms).toLocaleTimeString() : 'clock not set';
+  $('sid').textContent = s.session.id != null ? '#'+s.session.id : '';
+  $('dur').textContent = fmtDur(s.session.duration_s);
+  $('fps').textContent = fmtRate(s.rec.fps);
+  $('frames').textContent = fmtNum(s.rec.frames);
+  $('drop').textContent = fmtNum(s.rec.dropped_frames);
+  if(!nameDirty && document.activeElement !== $('name')) $('name').value = s.session.name || '';
+  $('timeinfo').textContent = s.time.synced
+    ? `Clock from ${s.time.source}. Session started ${fmtTime(s.session.start_utc_ms)}.`
+    : 'Clock not set yet – it syncs automatically from this page.';
+  $('used').textContent = s.ring.wrapped ? 'full (oldest overwritten)' : s.ring.used_pct + '%';
+  $('used').style.fontSize = s.ring.wrapped ? '15px' : '';
+  const h = s.ring.hours_at_current_rate;
+  $('cap').textContent = h==null ? '–' : h > 48 ? (h/24).toFixed(1)+' days' : h.toFixed(1)+' h';
+  $('wr').textContent = s.rec.write_kbps + ' KiB/s';
+  $('werr').textContent = s.rec.write_errors + ' / ' + s.rec.lost_blocks;
+  $('power').textContent = (s.power.fail ? '⚠ Supply is down, writes paused. ' : 'Supply OK. ') + (s.power.events ? `${s.power.events} power dip(s) this boot. ` : '') + `Queue: ${s.rec.queue_blocks} blocks. Uptime ${fmtDur(s.uptime_s)}.`;
+  if(s.can_socket_error) $('power').textContent += ' CAN socket error: ' + s.can_socket_error;
+
+  const buses = s.ifaces.map(i => {
+    const st = !i.present ? ['bad','unplugged'] : i.state==='bus-off'?['bad','bus-off'] : i.state==='error-passive'?['warn','error passive'] : i.state==='error-warning'?['warn','error warning'] : i.fps>0?['ok','receiving']:['','idle'];
+    const br = i.bitrate ? (i.bitrate/1000)+' kbit/s' + (i.fd && i.dbitrate ? ' / '+(i.dbitrate/1e6)+' Mbit/s FD' : '') : 'virtual';
+    const ident = [i.driver, i.serial && 'S/N '+i.serial, i.usb_port && 'USB '+i.usb_port, i.listen_only ? 'listen-only' : 'active (ACKs frames)'].filter(Boolean).join(' · ');
+    return `<div class="bus">
+      <div class="n">${esc(i.name)}<small>${esc(i.label)}</small></div>
+      <div><span class="badge ${st[0]}">${st[1]}</span></div>
+      <div class="meta">${br} · ${fmtRate(i.fps)} fr/s · load ${i.load_pct}% · ${fmtNum(i.frames)} frames · ${i.errors} error frames<br>${esc(ident)}</div>
+      <div class="bar"><i style="width:${Math.min(100,i.load_pct)}%"></i></div>
+      ${i.config_error ? `<div class="note">${esc(i.config_error)}</div>` : ''}
+    </div>`;
+  }).join('');
+  $('buses').innerHTML = buses || '<span class="muted">No CAN adapters detected yet.</span>';
+
+  if(currentSession !== s.session.id){ currentSession = s.session.id; loadSessions(); }
+}
+
+function renderLive(rows){
+  const f = $('filter').value.trim().toUpperCase();
+  const out = [];
+  for(const r of rows){
+    if(f && !(r.if.toUpperCase().includes(f) || r.id.includes(f) || r.data.includes(f))) continue;
+    const data = r.data.replace(/(..)/g,'$1 ').trim();
+    out.push(`<tr class="${r.age_ms>5000?'stale':''}"><td>${esc(r.if)}</td><td class="m">${r.id}${r.fd?' <small>FD</small>':''}</td><td class="r">${r.len}</td><td class="m data">${data}</td><td class="r">${r.hz}</td><td class="r">${fmtNum(r.n)}</td><td class="r">${r.age_ms<1000?r.age_ms+' ms':(r.age_ms/1000).toFixed(0)+' s'}</td></tr>`);
+    if(out.length >= 400) break;
+  }
+  $('live').innerHTML = out.join('') || '<tr><td colspan="7" class="muted">No frames yet</td></tr>';
+}
+
+async function loadSessions(){
+  try{
+    const list = await api('/api/sessions');
+    const range = $('range').value, gz = $('gz').value;
+    const q = (fmt) => `?fmt=${fmt}&gz=${gz}` + (range ? `&last_s=${range}` : '');
+    $('sessions').innerHTML = list.map(s => {
+      const live = lastStatus && s.id === lastStatus.session.id;
+      const when = s.start_utc_ms ? fmtTime(s.start_utc_ms) : 'no clock sync';
+      const title = s.name ? esc(s.name) : `Session ${s.id}`;
+      return `<div class="sess">
+        <div><div class="t">${title}${live?'<span class="live-tag">recording</span>':''}</div>
+        <div class="d">#${s.id} · ${when} · ${fmtDur(s.duration_s)} · ${s.size_kb >= 1024 ? (s.size_kb/1024).toFixed(1)+' MiB' : s.size_kb+' KiB'}${s.complete?'':' · start overwritten'}${s.power_fail?' · ended by power loss':''}</div></div>
+        <div class="dl"><a href="/api/sessions/${s.id}/download${q('candump')}" download>candump .log</a><a href="/api/sessions/${s.id}/download${q('asc')}" download>Vector .asc</a></div>
+      </div>`;
+    }).join('') || '<span class="muted">Nothing recorded yet.</span>';
+  }catch(e){ $('sessions').innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
+}
+
+async function tick(){
+  try{
+    renderStatus(await api('/api/status'));
+    if(!paused) renderLive(await api('/api/live'));
+  }catch(e){ setState('bad', 'Logger offline'); }
+}
+
+$('name').addEventListener('input', ()=> nameDirty = true);
+$('saveName').onclick = async () => {
+  try{ await api('/api/cmd', {cmd:'name', name: $('name').value}); nameDirty=false; toast('Name saved'); setTimeout(loadSessions, 1500); }catch(e){ toast(e.message) }
+};
+$('name').addEventListener('keydown', e => { if(e.key==='Enter') $('saveName').click() });
+$('mark').onclick = async () => {
+  const t = $('markText').value || 'marker';
+  try{ await api('/api/cmd', {cmd:'mark', text:t}); $('markText').value=''; toast('Marker added'); }catch(e){ toast(e.message) }
+};
+$('newSess').onclick = async () => {
+  if(!confirm('Close this session and start a new one?')) return;
+  try{ await api('/api/cmd', {cmd:'new_session', name: ''}); nameDirty=false; $('name').value=''; toast('New session started'); }catch(e){ toast(e.message) }
+};
+$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'Resume' : 'Pause' };
+$('refresh').onclick = loadSessions;
+$('range').onchange = loadSessions;
+$('gz').onchange = loadSessions;
+$('filter').addEventListener('input', () => { if(paused) return; });
+
+timesync().then(tick);
+setInterval(tick, 1000);
+setInterval(timesync, 10*60*1000);
+</script>
+</body>
+</html>

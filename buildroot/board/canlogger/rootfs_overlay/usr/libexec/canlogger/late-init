@@ -1,0 +1,8 @@
+#!/bin/sh
+# Non-critical setup, runs in parallel with logging.
+. /usr/libexec/canlogger/functions
+
+if [ "$(conf ethernet dhcp)" = dhcp ] && [ -d /sys/class/net/eth0 ]; then
+	ip link set eth0 up
+	udhcpc -b -S -i eth0 -x hostname:"$(hostname)" >/dev/null 2>&1
+fi

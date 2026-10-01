@@ -1,0 +1,23 @@
+# shell helpers for the CAN logger scripts
+CONF=/boot/logger.conf
+
+# conf KEY [DEFAULT]  -> value from logger.conf (last one wins)
+conf() {
+	v=$(sed -n "s/^[[:space:]]*$1[[:space:]]*=\(.*\)$/\1/p" "$CONF" 2>/dev/null | tail -n 1 |
+		sed 's/\r$//; s/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//; s/^"\(.*\)"$/\1/')
+	[ -n "$v" ] && echo "$v" || echo "$2"
+}
+
+# wait_for PATH SECONDS
+wait_for() {
+	i=0
+	while [ ! -e "$1" ] && [ $i -lt $(( $2 * 10 )) ]; do
+		sleep 0.1
+		i=$((i + 1))
+	done
+	[ -e "$1" ]
+}
+
+idle_forever() {
+	exec sleep 2147483647
+}

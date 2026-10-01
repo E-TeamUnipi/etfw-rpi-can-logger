@@ -1,0 +1,13 @@
+#!/bin/sh
+. /usr/libexec/canlogger/functions
+[ "$(conf ble on)" = off ] && idle_forever
+
+modprobe bluetooth 2>/dev/null
+modprobe hci_uart 2>/dev/null
+wait_for /run/dbus/system_bus_socket 10 || exit 1
+if ! wait_for /sys/class/bluetooth/hci0 8; then
+	logger -t bluetoothd "no hci0 (is dtparam=krnbt=on set in config.txt?)"
+	sleep 10
+	exit 1
+fi
+/usr/libexec/canlogger/run bluetoothd /usr/libexec/bluetooth/bluetoothd -n

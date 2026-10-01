@@ -1,0 +1,6 @@
+#!/bin/sh
+. /usr/libexec/canlogger/functions
+[ "$(conf ble on)" = off ] && idle_forever
+mkdir -p /run/dbus
+rm -f /run/dbus/pid /run/dbus/system_bus_socket
+exec dbus-daemon --system --nofork --nopidfile

@@ -1,0 +1,50 @@
+# ---- CAN: core and USB adapters built in (no module loading at boot) ----
+CONFIG_CAN=y
+CONFIG_CAN_RAW=y
+CONFIG_CAN_BCM=y
+CONFIG_CAN_GW=y
+CONFIG_CAN_DEV=y
+CONFIG_CAN_NETLINK=y
+CONFIG_CAN_CALC_BITTIMING=y
+CONFIG_CAN_VCAN=y
+CONFIG_CAN_VXCAN=y
+# candleLight / CANable (candleLight firmware) / many open-hardware adapters
+CONFIG_CAN_GS_USB=y
+# PEAK PCAN-USB family
+CONFIG_CAN_PEAK_USB=y
+# Kvaser, esd, 8devices, Microchip, Theobroma, ETAS, Fintek
+CONFIG_CAN_KVASER_USB=y
+CONFIG_CAN_ESD_USB=y
+CONFIG_CAN_8DEV_USB=y
+CONFIG_CAN_MCBA_USB=y
+CONFIG_CAN_UCAN=y
+CONFIG_CAN_ETAS_ES58X=y
+CONFIG_CAN_F81604=y
+# slcan (CANable with stock firmware) needs slcand; supported but slower
+CONFIG_CAN_SLCAN=y
+CONFIG_USB_ACM=y
+# SPI CAN HATs, loaded through dtoverlay
+CONFIG_CAN_MCP251X=m
+CONFIG_CAN_MCP251XFD=m
+
+# ---- things the logger relies on ----
+CONFIG_WATCHDOG=y
+CONFIG_BCM2835_WDT=y
+CONFIG_GPIO_CDEV=y
+CONFIG_GPIO_CDEV_V1=y
+CONFIG_RTC_HCTOSYS=y
+CONFIG_RTC_HCTOSYS_DEVICE="rtc0"
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+
+# ---- Bluetooth via the kernel serdev driver (dtparam=krnbt=on) ----
+CONFIG_SERIAL_DEV_BUS=y
+CONFIG_SERIAL_DEV_CTRL_TTYPORT=y
+CONFIG_BT=m
+CONFIG_BT_LE=y
+CONFIG_BT_HCIUART=m
+CONFIG_BT_HCIUART_SERDEV=y
+CONFIG_BT_HCIUART_BCM=y
+
+# ---- quieter / faster boot ----
+# CONFIG_LOGO is not set

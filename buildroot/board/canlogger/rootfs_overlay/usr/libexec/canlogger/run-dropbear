@@ -1,0 +1,18 @@
+#!/bin/sh
+# SSH for debugging. The host key is created on first boot (the only time
+# the rootfs is briefly remounted read-write).
+. /usr/libexec/canlogger/functions
+[ "$(conf ssh on)" = off ] && idle_forever
+KEY=/etc/dropbear/dropbear_ed25519_host_key
+if [ ! -s "$KEY" ]; then
+	mount -o remount,rw / &&
+		dropbearkey -t ed25519 -f "$KEY" >/dev/null 2>&1
+	sync
+	mount -o remount,ro /
+fi
+if [ -s "$KEY" ]; then
+	exec /usr/libexec/canlogger/run dropbear dropbear -F -E -r "$KEY"
+else
+	# could not persist a key: use a temporary one
+	exec /usr/libexec/canlogger/run dropbear dropbear -F -E -R
+fi
