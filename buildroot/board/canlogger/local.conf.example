@@ -1,0 +1,20 @@
+# Copy to local.conf (same folder) and fill in. local.conf is ignored by git.
+#
+# Settings that are logger.conf keys are appended to the logger.conf on the
+# boot partition, so they override the defaults there. root_password is only
+# used at build time (it is hashed into /etc/shadow, never copied as text).
+#
+# GitHub Actions: store this file's content as the repository secret
+# CANLOGGER_LOCAL_CONF; the image workflow writes it here before building.
+
+wifi_password = change-me-please
+# or, instead of the plain password (64 hex digits):
+#   wpa_passphrase ET-18 'the password'   (or see README)
+#wifi_psk = 0123...
+
+# PIN for sending CAN frames and other commands from the app
+#control_pin = 1234
+
+# SSH root password. Without it, root has no password (SSH only with a key
+# in authorized_keys next to this file).
+#root_password = something-long

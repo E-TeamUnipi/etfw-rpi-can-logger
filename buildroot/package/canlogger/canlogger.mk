@@ -20,7 +20,7 @@ CANLOGGER_BINS += canble
 # libdbus-sys finds libdbus through Buildroot's pkg-config wrapper
 CANLOGGER_CARGO_ENV += PKG_CONFIG_ALLOW_CROSS=1
 else
-CANLOGGER_CARGO_BUILD_OPTS += --workspace --exclude canble
+CANLOGGER_CARGO_BUILD_OPTS += --workspace --exclude canble --exclude canlog-wasm
 endif
 
 # Buildroot vendors crates for downloaded cargo packages only. This package

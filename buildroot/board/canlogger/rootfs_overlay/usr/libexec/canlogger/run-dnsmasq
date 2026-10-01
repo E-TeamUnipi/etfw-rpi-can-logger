@@ -1,6 +1,9 @@
 #!/bin/sh
 # DHCP + DNS for hotspot clients. Every name resolves to the logger, so
-# http://anything/ opens the status page.
+# http://anything/ opens the status page. --local makes every other record
+# type (AAAA, HTTPS, ...) an empty answer: without it dnsmasq REFUSES them,
+# and clients that query A, AAAA and HTTPS together (Apple, Chrome) give up
+# on the name.
 . /usr/libexec/canlogger/functions
 IP=$(conf wifi_ip 192.168.4.1)
 NET=${IP%.*}
@@ -16,5 +19,5 @@ exec dnsmasq -k --conf-file=/dev/null \
 	--dhcp-option=option:dns-server,"$IP" \
 	--dhcp-leasefile=/run/dnsmasq.leases \
 	--no-resolv --no-hosts \
-	--address="/#/$IP" \
+	--address="/#/$IP" --local="/#/" \
 	--log-facility=- 2>&1 | logger -t dnsmasq

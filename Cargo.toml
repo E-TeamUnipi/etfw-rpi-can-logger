@@ -1,6 +1,8 @@
 [workspace]
 resolver = "2"
-members = ["crates/canlog-core", "crates/canlogd", "crates/canweb", "crates/canble"]
+members = ["crates/canlog-dbc", "crates/canlog-analysis", "crates/canlog-wasm", "crates/canlog-core", "crates/canlogd", "crates/canweb", "crates/canble"]
+# canlog-wasm only builds for the web app (wasm32); keep it out of Pi builds
+default-members = ["crates/canlog-dbc", "crates/canlog-analysis", "crates/canlog-core", "crates/canlogd", "crates/canweb", "crates/canble"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,6 +11,8 @@ license = "MIT"
 
 [workspace.dependencies]
 canlog-core = { path = "crates/canlog-core" }
+canlog-dbc = { path = "crates/canlog-dbc" }
+canlog-analysis = { path = "crates/canlog-analysis" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"

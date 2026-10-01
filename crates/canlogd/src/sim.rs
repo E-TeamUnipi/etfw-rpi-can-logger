@@ -73,6 +73,7 @@ impl Sim {
                     flags: if m.fd { CANFD_BRS } else { 0 },
                     len: m.len,
                     data,
+                    local: false,
                 });
                 m.counter = m.counter.wrapping_add(1);
                 m.next += m.period_ns;

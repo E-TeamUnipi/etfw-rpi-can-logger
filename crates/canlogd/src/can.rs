@@ -30,6 +30,8 @@ pub struct RxFrame {
     pub flags: u8,
     pub len: u8,
     pub data: [u8; 64],
+    /// Sent from this host (by our TX socket): the kernel's local echo.
+    pub local: bool,
 }
 
 const BATCH: usize = 64;
@@ -129,6 +131,7 @@ impl CanSocket {
                 flags: 0,
                 len: b[4],
                 data: [0; 64],
+                local: self.msgs[i].msg_hdr.msg_flags & libc::MSG_DONTROUTE != 0,
             };
             let max = if f.fd { 64 } else { 8 };
             if f.fd {
@@ -165,6 +168,64 @@ impl CanSocket {
 }
 
 impl Drop for CanSocket {
+    fn drop(&mut self) {
+        unsafe { libc::close(self.fd) };
+    }
+}
+
+/// Socket for sending. Separate from the receive socket so the kernel's
+/// local echo of our own frames reaches the receive socket (flagged
+/// MSG_DONTROUTE) and gets recorded like any other frame.
+pub struct TxSocket {
+    fd: RawFd,
+}
+
+impl TxSocket {
+    pub fn open() -> io::Result<TxSocket> {
+        let fd = unsafe { libc::socket(PF_CAN, libc::SOCK_RAW | libc::SOCK_CLOEXEC, CAN_RAW) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let s = TxSocket { fd };
+        let one: i32 = 1;
+        setopt(fd, SOL_CAN_RAW, CAN_RAW_FD_FRAMES, &one)?;
+        // we never read from it: an empty filter list receives nothing
+        let _ = unsafe { libc::setsockopt(fd, SOL_CAN_RAW, 1 /* CAN_RAW_FILTER */, std::ptr::null(), 0) };
+        Ok(s)
+    }
+
+    /// Send one frame on an interface. `id` includes CAN_EFF_FLAG for
+    /// extended ids. Fails with the kernel's error (ENOBUFS when the TX queue
+    /// is full, ENETDOWN when the interface is down).
+    pub fn send(&self, ifindex: i32, id: u32, fd: bool, brs: bool, data: &[u8]) -> io::Result<()> {
+        let mut buf = [0u8; CANFD_MTU];
+        buf[..4].copy_from_slice(&id.to_ne_bytes());
+        buf[4] = data.len() as u8;
+        if fd {
+            buf[5] = if brs { canlog_core::format::CANFD_BRS } else { 0 };
+        }
+        buf[8..8 + data.len()].copy_from_slice(data);
+        let len = if fd { CANFD_MTU } else { CAN_MTU };
+        let addr = SockaddrCan { family: PF_CAN as u16, ifindex, addr: [0; 16] };
+        let r = unsafe {
+            libc::sendto(
+                self.fd,
+                buf.as_ptr() as *const libc::c_void,
+                len,
+                libc::MSG_DONTWAIT,
+                &addr as *const _ as *const libc::sockaddr,
+                size_of::<SockaddrCan>() as u32,
+            )
+        };
+        if r < 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Drop for TxSocket {
     fn drop(&mut self) {
         unsafe { libc::close(self.fd) };
     }

@@ -1,17 +1,17 @@
 //! The main loop: receive frames, pack them into blocks, handle commands,
 //! power-fail transitions and periodic housekeeping, publish status.
 
-use crate::can::{CanSocket, RxFrame};
+use crate::can::{CanSocket, RxFrame, TxSocket};
 use crate::ifaces::{self, Event, IfaceTable};
 use crate::sim::{self, Sim};
 use crate::writer::{self, Pipeline};
-use crate::Shared;
+use crate::{Request, Shared};
 use canlog_core::config::Config;
 use canlog_core::format::*;
-use canlog_core::proto::Command;
+use canlog_core::proto::{self, err, Command};
 use canlog_core::ring::AlignedBuf;
 use canlog_core::{boot_ns, realtime_ns};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering::*;
 use std::sync::mpsc::Receiver;
@@ -38,8 +38,11 @@ pub struct Recorder {
     cfg: Config,
     shared: Arc<Shared>,
     pipe: Arc<Pipeline>,
-    cmds: Receiver<Command>,
+    cmds: Receiver<Request>,
     sock: Option<CanSocket>,
+    tx_sock: Option<TxSocket>,
+    /// binary records for stream clients, sent once per batch of frames
+    stream_buf: Vec<u8>,
     sock_error: Option<String>,
     sim: Option<Sim>,
     ifaces: IfaceTable,
@@ -92,7 +95,7 @@ fn bits_ns(f: &RxFrame, bitrate: u32, dbitrate: u32) -> u64 {
 }
 
 impl Recorder {
-    pub fn new(cfg: &Config, shared: Arc<Shared>, pipe: Arc<Pipeline>, cmds: Receiver<Command>) -> Recorder {
+    pub fn new(cfg: &Config, shared: Arc<Shared>, pipe: Arc<Pipeline>, cmds: Receiver<Request>) -> Recorder {
         let now = boot_ns();
         let mut r = Recorder {
             cfg: cfg.clone(),
@@ -100,6 +103,8 @@ impl Recorder {
             pipe,
             cmds,
             sock: None,
+            tx_sock: None,
+            stream_buf: Vec::new(),
             sock_error: None,
             sim: None,
             ifaces: IfaceTable::default(),
@@ -251,6 +256,7 @@ impl Recorder {
     fn handle_frames(&mut self, now: u64) {
         let frames = std::mem::take(&mut self.frames);
         let mut rescanned = false;
+        let streaming = self.shared.stream_count.load(Relaxed) > 0;
         for f in &frames {
             let idx = match self.ifaces.get_idx(f.ifindex) {
                 Some(i) => i,
@@ -274,13 +280,25 @@ impl Recorder {
             };
             let dl = if !f.fd && f.id & CAN_RTR_FLAG != 0 { 0 } else { f.len as usize };
             let typ = if f.fd { rt::CANFD } else { rt::CAN };
-            self.push(typ, idx, f.flags, ts, &[&f.id.to_le_bytes(), &[f.len], &f.data[..dl]]);
+            let rflags = f.flags | if f.local { CAN_TX_LOCAL } else { 0 };
+            self.push(typ, idx, rflags, ts, &[&f.id.to_le_bytes(), &[f.len], &f.data[..dl]]);
             self.frames_total += 1;
+            if streaming {
+                self.stream_record(f, idx, ts, dl);
+            }
 
             let mut state_change = None;
             if let Some(it) = self.ifaces.by_idx_mut(idx) {
                 it.frames += 1;
-                it.busy_ns += bits_ns(f, it.info.bitrate, it.info.dbitrate);
+                let busy = bits_ns(f, it.info.bitrate, it.info.dbitrate);
+                it.busy_ns += busy;
+                // 100 ms windows for the peak load
+                if ts >= it.win_start + 100 * MS {
+                    it.peak = it.peak.max(it.win_busy as f64 / (100 * MS) as f64 * 100.0);
+                    it.win_start = ts - ts % (100 * MS);
+                    it.win_busy = 0;
+                }
+                it.win_busy += busy;
                 if f.id & CAN_ERR_FLAG != 0 {
                     it.errors += 1;
                     let mut st = None;
@@ -328,6 +346,54 @@ impl Recorder {
         }
         self.frames = frames;
         self.frames.clear();
+        if streaming && !self.stream_buf.is_empty() {
+            self.flush_stream();
+        }
+    }
+
+    fn stream_record(&mut self, f: &RxFrame, idx: u8, ts: u64, dl: usize) {
+        use proto::*;
+        let mut fl = 0u8;
+        let id = if f.id & CAN_ERR_FLAG != 0 {
+            fl |= STREAM_F_ERR;
+            f.id & CAN_EFF_MASK
+        } else if f.id & CAN_EFF_FLAG != 0 {
+            fl |= STREAM_F_EXT;
+            f.id & CAN_EFF_MASK
+        } else {
+            f.id & CAN_SFF_MASK
+        };
+        if f.id & CAN_RTR_FLAG != 0 {
+            fl |= STREAM_F_RTR;
+        }
+        if f.fd {
+            fl |= STREAM_F_FD;
+            if f.flags & CANFD_BRS != 0 {
+                fl |= STREAM_F_BRS;
+            }
+            if f.flags & CANFD_ESI != 0 {
+                fl |= STREAM_F_ESI;
+            }
+        }
+        if f.local {
+            fl |= STREAM_F_TX;
+        }
+        let t = match self.time {
+            Some((off, _)) => ts as i64 + off,
+            None => ts as i64,
+        };
+        let b = &mut self.stream_buf;
+        b.extend_from_slice(&t.to_le_bytes());
+        b.extend_from_slice(&id.to_le_bytes());
+        b.extend_from_slice(&[idx, fl, dl as u8, 0]);
+        b.extend_from_slice(&f.data[..dl]);
+    }
+
+    /// Hand the batch to every stream client; a full client queue loses the
+    /// batch, a closed one is removed.
+    fn flush_stream(&mut self) {
+        let batch = Arc::new(std::mem::take(&mut self.stream_buf));
+        self.shared.streams.lock().unwrap().retain(|s| !matches!(s.try_send(batch.clone()), Err(std::sync::mpsc::TrySendError::Disconnected(_))));
     }
 
     fn scan(&mut self, now: u64) {
@@ -350,6 +416,87 @@ impl Recorder {
     }
 
     // ------------------------------------------------------------ commands
+
+    fn handle_req(&mut self, req: Request, now: u64) {
+        let res = match req.cmd {
+            Command::Send { iface, id, ext, fd, brs, data } => self.send(&iface, id, ext, fd, brs, &data, now),
+            Command::TxMode { iface, on } => self.tx_mode(&iface, on, now),
+            cmd => {
+                self.handle_cmd(cmd, now);
+                proto::ok()
+            }
+        };
+        if let Some(r) = req.reply {
+            let _ = r.send(res);
+        }
+    }
+
+    fn log_iface(&mut self, i: usize, now: u64, text: String) {
+        let (idx, enc) = (self.ifaces.list[i].idx, self.ifaces.list[i].info.encode());
+        self.push(rt::IFACE, idx, 0, now, &[&enc]);
+        self.push(rt::MARK, 0, 0, now, &[text.as_bytes()]);
+    }
+
+    fn tx_mode(&mut self, iface: &str, on: bool, now: u64) -> Value {
+        let Some(i) = self.ifaces.find(iface) else { return err(format!("no interface {iface}")) };
+        if on && !self.ifaces.list[i].tx_allowed {
+            return err(format!("sending is not enabled on {iface} (logger.conf: can.<serial, port or name>.tx = 1)"));
+        }
+        if self.ifaces.list[i].tx_mode == on {
+            return proto::ok();
+        }
+        if let Err(e) = self.ifaces.set_tx_mode(&self.cfg, i, on) {
+            return err(e);
+        }
+        let name = self.ifaces.list[i].info.name.clone();
+        let text = if on { format!("{name}: TX mode on (listen-only off, frames are ACKed)") } else { format!("{name}: back to listen-only") };
+        self.log_iface(i, now, text);
+        proto::ok()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn send(&mut self, iface: &str, id: u32, ext: bool, fd: bool, brs: bool, data: &str, now: u64) -> Value {
+        let Some(bytes) = proto::parse_hex(data) else { return err("data must be hex bytes") };
+        if (!fd && bytes.len() > 8) || bytes.len() > 64 || (fd && bytes.len() > 8 && !matches!(bytes.len(), 12 | 16 | 20 | 24 | 32 | 48 | 64)) {
+            return err(format!("invalid payload length {}", bytes.len()));
+        }
+        if (ext && id > CAN_EFF_MASK) || (!ext && id > CAN_SFF_MASK) {
+            return err("id out of range");
+        }
+        let Some(i) = self.ifaces.find(iface) else { return err(format!("no interface {iface}")) };
+        let it = &self.ifaces.list[i];
+        if fd && !it.info.fd {
+            return err(format!("{iface} is not configured for CAN FD (dbitrate)"));
+        }
+        let mut changed = false;
+        if !it.tx_mode {
+            let r = self.tx_mode(iface, true, now);
+            if r["ok"] != true {
+                return r;
+            }
+            changed = true;
+        }
+        let it = &self.ifaces.list[i];
+        let raw_id = if ext { id | CAN_EFF_FLAG } else { id };
+        if it.ifindex < 0 {
+            // simulator: the frame goes straight into the recording
+            let mut f = RxFrame { ifindex: it.ifindex, ts_rt_ns: None, id: raw_id, fd, flags: if fd && brs { CANFD_BRS } else { 0 }, len: bytes.len() as u8, data: [0; 64], local: true };
+            f.data[..bytes.len()].copy_from_slice(&bytes);
+            self.frames.push(f);
+            self.handle_frames(now);
+        } else {
+            if self.tx_sock.is_none() {
+                match TxSocket::open() {
+                    Ok(s) => self.tx_sock = Some(s),
+                    Err(e) => return err(format!("TX socket: {e}")),
+                }
+            }
+            if let Err(e) = self.tx_sock.as_ref().unwrap().send(it.ifindex, raw_id, fd, brs, &bytes) {
+                return err(format!("send failed: {e}"));
+            }
+        }
+        json!({"ok": true, "tx_mode_changed": changed})
+    }
 
     fn handle_cmd(&mut self, cmd: Command, now: u64) {
         match cmd {
@@ -401,6 +548,7 @@ impl Recorder {
                     it.frames = 0;
                     it.errors = 0;
                     it.frames_prev = 0;
+                    it.peak_max = 0.0;
                 }
                 self.frames_prev = self.frames_total;
                 self.start_session(now);
@@ -411,7 +559,7 @@ impl Recorder {
                 }
                 self.shared.pf_asserted.store(on, Relaxed);
             }
-            Command::Status | Command::Live { .. } | Command::Subscribe => {}
+            Command::Status | Command::Live { .. } | Command::Subscribe | Command::Stream | Command::Send { .. } | Command::TxMode { .. } => {}
         }
     }
 
@@ -432,6 +580,9 @@ impl Recorder {
             it.frames_prev = it.frames;
             it.load = (it.busy_ns as f64 / (dt_s * 1e9) * 100.0).min(100.0);
             it.busy_ns = 0;
+            it.peak_shown = it.peak.min(100.0).max(it.load);
+            it.peak_max = it.peak_max.max(it.peak_shown);
+            it.peak = 0.0;
             ifs.push(json!({
                 "idx": it.idx,
                 "name": it.info.name,
@@ -447,6 +598,10 @@ impl Recorder {
                 "state": ifaces::state_name(it.state),
                 "fps": (it.fps * 10.0).round() / 10.0,
                 "load_pct": (it.load * 10.0).round() / 10.0,
+                "load_peak_pct": (it.peak_shown * 10.0).round() / 10.0,
+                "load_max_pct": (it.peak_max * 10.0).round() / 10.0,
+                "tx_allowed": it.tx_allowed,
+                "tx_mode": it.tx_mode,
                 "frames": it.frames,
                 "errors": it.errors,
                 "config_error": it.config_error,
@@ -600,8 +755,8 @@ impl Recorder {
             }
 
             // commands from clients
-            while let Ok(cmd) = self.cmds.try_recv() {
-                self.handle_cmd(cmd, now);
+            while let Ok(req) = self.cmds.try_recv() {
+                self.handle_req(req, now);
             }
 
             // power-fail transitions

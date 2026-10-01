@@ -31,6 +31,17 @@ jobs:
             ~/.cache/canlogger/ccache
           key: buildroot-${{ matrix.board }}-${{ hashFiles('buildroot/configs/*', 'buildroot/board/**', 'Cargo.lock') }}
           restore-keys: buildroot-${{ matrix.board }}-
+      # Wi-Fi/root passwords: repository secret CANLOGGER_LOCAL_CONF holds a
+      # local.conf (see buildroot/board/canlogger/local.conf.example)
+      - name: Local settings
+        env:
+          LOCAL_CONF: ${{ secrets.CANLOGGER_LOCAL_CONF }}
+        run: |
+          if [ -n "$LOCAL_CONF" ]; then
+            printf '%s\n' "$LOCAL_CONF" > buildroot/board/canlogger/local.conf
+          else
+            echo "::warning::CANLOGGER_LOCAL_CONF secret not set: default Wi-Fi password, no root password"
+          fi
       - run: scripts/build-image.sh --native ${{ matrix.board }}
       - run: xz -T0 -k output-${{ matrix.board }}/images/sdcard.img
       - uses: actions/upload-artifact@v4

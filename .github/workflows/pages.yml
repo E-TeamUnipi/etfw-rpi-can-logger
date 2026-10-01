@@ -1,10 +1,17 @@
-# Publishes webapp/ (the Web Bluetooth app) to GitHub Pages.
+# Publishes webapp/ (the analysis app: Bluetooth, Wi-Fi, log files) to
+# GitHub Pages, with the WebAssembly engine built from crates/canlog-wasm.
 # Repo settings -> Pages -> Source: GitHub Actions.
 name: webapp
 on:
   push:
     branches: [main]
-    paths: ["webapp/**"]
+    paths:
+      - "webapp/**"
+      - "crates/canlog-dbc/**"
+      - "crates/canlog-analysis/**"
+      - "crates/canlog-wasm/**"
+      - "Cargo.lock"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,6 +25,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Rust for WebAssembly
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+      - name: Test the engine
+        run: cargo test -p canlog-dbc -p canlog-analysis
+      - name: Build the engine
+        run: webapp/build.sh
       - uses: actions/upload-pages-artifact@v3
         with:
           path: webapp

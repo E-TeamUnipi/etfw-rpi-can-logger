@@ -1,0 +1,67 @@
+VERSION ""
+
+NS_ :
+	CM_
+	BA_DEF_
+	BA_
+
+BS_:
+
+BU_: ECU Body Logger
+
+BO_ 160 Engine: 8 ECU
+ SG_ EngineSpeed : 7|16@0+ (1,0) [0|8000] "rpm" Logger
+ SG_ VehicleSpeed : 23|16@0+ (0.01,0) [0|300] "km/h" Logger
+ SG_ AliveCounter : 56|4@1+ (1,0) [0|15] "" Logger
+
+BO_ 193 PT_0C1: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 416 PT_1A0: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 513 PT_201: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 752 PT_2F0: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 848 PT_350: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 1001 PT_3E9: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 1056 PT_420: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 1520 PT_5F0: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BO_ 2015 PT_7DF: 8 ECU
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Value : 8|16@1+ (0.1,0) [0|6553.5] "" Logger
+
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 10000;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_DEF_ "Baudrate" INT 0 1000000;
+BA_ "Baudrate" 500000;
+BA_ "GenMsgCycleTime" BO_ 160 10;
+BA_ "GenMsgCycleTime" BO_ 193 10;
+BA_ "GenMsgCycleTime" BO_ 416 20;
+BA_ "GenMsgCycleTime" BO_ 513 50;
+BA_ "GenMsgCycleTime" BO_ 752 100;
+BA_ "GenMsgCycleTime" BO_ 848 100;
+BA_ "GenMsgCycleTime" BO_ 1001 200;
+BA_ "GenMsgCycleTime" BO_ 1056 1000;
+BA_ "GenMsgCycleTime" BO_ 1520 1000;
+BA_ "GenMsgCycleTime" BO_ 2015 1000;
+CM_ SG_ 160 EngineSpeed "Simulated: 2000 +- 1500 rpm sine";

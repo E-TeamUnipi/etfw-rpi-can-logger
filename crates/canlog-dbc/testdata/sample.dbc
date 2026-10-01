@@ -1,0 +1,64 @@
+VERSION "1.2.3"
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	SIG_VALTYPE_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: ECU1 ECU2 Gateway
+
+BO_ 256 EngineData: 8 ECU1
+ SG_ EngineSpeed : 0|16@1+ (0.25,0) [0|16383.75] "rpm" Gateway,ECU2
+ SG_ CoolantTemp : 16|8@1- (1,-40) [-40|215] "degC" Gateway
+ SG_ Gear : 31|4@0+ (1,0) [0|15] "" Gateway
+
+BO_ 2566844926 ExtStatus: 8 ECU2
+ SG_ Mode M : 0|8@1+ (1,0) [0|255] "" Gateway
+ SG_ Voltage m1 : 8|16@1+ (0.001,0) [0|65.535] "V" Gateway
+ SG_ Current m2 : 8|16@1- (0.01,0) [-327.68|327.67] "A" Gateway
+ SG_ Ratio : 24|32@1- (1,0) [0|0] "" Gateway
+
+BO_ 512 FdFrame: 64 ECU1
+ SG_ Counter : 7|8@0+ (1,0) [0|255] "" Gateway
+ SG_ Last : 504|8@1+ (1,0) [0|255] "" Gateway
+
+BO_ 768 Mux2: 8 ECU2
+ SG_ Sel M : 0|4@1+ (1,0) [0|15] "" Gateway
+ SG_ Sub m3M : 4|4@1+ (1,0) [0|15] "" Gateway
+ SG_ Deep : 8|8@1+ (1,0) [0|255] "" Gateway
+
+BO_ 3221225472 VECTOR__INDEPENDENT_SIG_MSG: 0 Vector__XXX
+ SG_ Orphan : 0|8@1+ (1,0) [0|0] "" Vector__XXX
+
+CM_ "Test database";
+CM_ BO_ 256 "Engine data";
+CM_ SG_ 256 EngineSpeed "Crankshaft
+speed";
+BA_DEF_ BO_  "GenMsgCycleTime" INT 0 10000;
+BA_DEF_ BO_  "VFrameFormat" ENUM  "StandardCAN","ExtendedCAN","reserved","J1939PG","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","StandardCAN_FD","ExtendedCAN_FD";
+BA_DEF_ BO_  "GenMsgSendType" ENUM  "Cyclic","Event","IfActive";
+BA_DEF_ BO_  "CANFD_BRS" ENUM  "0","1";
+BA_DEF_  "Baudrate" INT 0 1000000;
+BA_DEF_ SG_  "GenSigStartValue" FLOAT 0 1e+009;
+BA_DEF_DEF_  "GenMsgCycleTime" 0;
+BA_DEF_DEF_  "VFrameFormat" "StandardCAN";
+BA_DEF_DEF_  "GenMsgSendType" "Cyclic";
+BA_DEF_DEF_  "CANFD_BRS" "1";
+BA_ "Baudrate" 500000;
+BA_ "GenMsgCycleTime" BO_ 256 10;
+BA_ "GenMsgCycleTime" BO_ 2566844926 100;
+BA_ "GenMsgSendType" BO_ 768 1;
+BA_ "VFrameFormat" BO_ 512 14;
+BA_ "GenSigStartValue" SG_ 256 CoolantTemp 40;
+VAL_ 256 Gear 0 "Neutral" 1 "First" 15 "Invalid" ;
+SIG_VALTYPE_ 2566844926 Ratio : 1;
+SG_MUL_VAL_ 768 Deep Sub 2-4, 7-7;
+SG_MUL_VAL_ 768 Sub Sel 3-3;

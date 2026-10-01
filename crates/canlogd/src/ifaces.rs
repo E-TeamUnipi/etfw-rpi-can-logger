@@ -16,6 +16,10 @@ pub struct Iface {
     pub present: bool,
     pub state: u8,
     pub config_error: Option<String>,
+    /// `can.<x>.tx = 1`: frames may be sent from the app.
+    pub tx_allowed: bool,
+    /// Switched out of listen-only for sending.
+    pub tx_mode: bool,
     // statistics
     pub frames: u64,
     pub errors: u64,
@@ -23,6 +27,13 @@ pub struct Iface {
     pub busy_ns: u64,
     pub fps: f64,
     pub load: f64,
+    /// 100 ms load windows: current window start/busy, peak since the last
+    /// status update, and the session maximum (%).
+    pub win_start: u64,
+    pub win_busy: u64,
+    pub peak: f64,
+    pub peak_shown: f64,
+    pub peak_max: f64,
 }
 
 #[derive(Default)]
@@ -88,8 +99,11 @@ fn ip(args: &[&str]) -> Result<(), String> {
     }
 }
 
-/// Apply logger.conf settings and bring the interface up.
-fn configure(cfg: &Config, name: &str, id: &Identity) -> (IfaceInfo, Option<String>) {
+/// Apply logger.conf settings and bring the interface up. With `tx_mode`
+/// the interface leaves listen-only and transmits in one-shot mode (no
+/// automatic retransmission). Returns the info, a configuration problem if
+/// any, and whether sending is allowed on it.
+fn configure(cfg: &Config, name: &str, id: &Identity, tx_mode: bool) -> (IfaceInfo, Option<String>, bool) {
     let ch = id.channel;
     let serial_ch = if id.serial.is_empty() { String::new() } else { format!("{}_{ch}", id.serial) };
     let port_ch = if id.port.is_empty() { String::new() } else { format!("{}_{ch}", id.port) };
@@ -110,20 +124,21 @@ fn configure(cfg: &Config, name: &str, id: &Identity) -> (IfaceInfo, Option<Stri
         bitrate: num("bitrate", 500_000) as u32,
         dbitrate: num("dbitrate", 0) as u32,
         fd: false,
-        listen_only: flag("listen_only", true),
+        listen_only: flag("listen_only", true) && !tx_mode,
     };
     info.fd = info.dbitrate > 0;
+    let tx_allowed = flag("tx", false);
 
     if id.virtual_if {
         // vcan / vxcan: no bit timing
         info.bitrate = 0;
         info.dbitrate = 0;
         let _ = ip(&["link", "set", "dev", name, "up"]);
-        return (info, None);
+        return (info, None, tx_allowed);
     }
     if !flag("autoconfig", true) {
         let _ = ip(&["link", "set", "dev", name, "up"]);
-        return (info, None);
+        return (info, None, tx_allowed);
     }
 
     let br = info.bitrate.to_string();
@@ -138,10 +153,22 @@ fn configure(cfg: &Config, name: &str, id: &Identity) -> (IfaceInfo, Option<Stri
         args.extend(["dbitrate", &dbr, "fd", "on"]);
     }
     args.extend(["listen-only", if info.listen_only { "on" } else { "off" }]);
+    args.extend(["one-shot", if tx_mode { "on" } else { "off" }]);
     args.extend(["restart-ms", &restart]);
 
     let _ = ip(&["link", "set", "dev", name, "down"]);
     let mut err = ip(&args).err();
+    if err.is_some() {
+        // not every adapter knows one-shot
+        let pos = args.iter().position(|a| *a == "one-shot").unwrap();
+        args.drain(pos..pos + 2);
+        let e2 = ip(&args).err();
+        if e2.is_none() && tx_mode {
+            err = Some("adapter does not support one-shot; failed frames are retransmitted".into());
+        } else {
+            err = e2;
+        }
+    }
     if err.is_some() && info.listen_only {
         // some adapters do not support listen-only; retry without it
         let pos = args.iter().position(|a| *a == "listen-only").unwrap();
@@ -157,7 +184,7 @@ fn configure(cfg: &Config, name: &str, id: &Identity) -> (IfaceInfo, Option<Stri
             None => format!("up: {e}"),
         });
     }
-    (info, err)
+    (info, err, tx_allowed)
 }
 
 impl IfaceTable {
@@ -169,7 +196,7 @@ impl IfaceTable {
         self.list.iter_mut().find(|i| i.idx == idx)
     }
 
-    fn insert(&mut self, ifindex: i32, info: IfaceInfo, err: Option<String>) -> usize {
+    fn insert(&mut self, ifindex: i32, info: IfaceInfo, err: Option<String>, tx_allowed: bool) -> usize {
         // re-plugged adapter: reuse its index within the session
         let slot = self.list.iter().position(|i| !i.present && i.info.name == info.name && i.info.serial == info.serial && i.info.usb_port == info.usb_port);
         let i = match slot {
@@ -181,6 +208,8 @@ impl IfaceTable {
                 e.present = true;
                 e.state = ifstate::UP;
                 e.config_error = err;
+                e.tx_allowed = tx_allowed;
+                e.tx_mode = false;
                 s
             }
             None => {
@@ -192,12 +221,19 @@ impl IfaceTable {
                     present: true,
                     state: ifstate::UP,
                     config_error: err,
+                    tx_allowed,
+                    tx_mode: false,
                     frames: 0,
                     errors: 0,
                     frames_prev: 0,
                     busy_ns: 0,
                     fps: 0.0,
                     load: 0.0,
+                    win_start: 0,
+                    win_busy: 0,
+                    peak: 0.0,
+                    peak_shown: 0.0,
+                    peak_max: 0.0,
                 });
                 self.list.len() - 1
             }
@@ -208,7 +244,35 @@ impl IfaceTable {
 
     /// Add a simulated interface (no sysfs).
     pub fn add_sim(&mut self, ifindex: i32, info: IfaceInfo) -> usize {
-        self.insert(ifindex, info, None)
+        self.insert(ifindex, info, None, true)
+    }
+
+    /// Find a present interface by name or label.
+    pub fn find(&self, name_or_label: &str) -> Option<usize> {
+        self.list.iter().position(|i| i.present && (i.info.name == name_or_label || (!i.info.label.is_empty() && i.info.label == name_or_label)))
+    }
+
+    /// Reconfigure an interface for sending (`on`) or back to its
+    /// logger.conf mode. The interface is down for a moment.
+    pub fn set_tx_mode(&mut self, cfg: &Config, i: usize, on: bool) -> Result<(), String> {
+        let it = &mut self.list[i];
+        if it.ifindex < 0 {
+            // simulated
+            it.tx_mode = on;
+            it.info.listen_only = !on;
+            return Ok(());
+        }
+        let name = it.info.name.clone();
+        let id = identify(&name);
+        let (info, err, _) = configure(cfg, &name, &id, on);
+        eprintln!("canlogd: {name}: {}", if on { "TX mode (listen-only off, one-shot)" } else { "back to configured mode" });
+        it.tx_mode = on && !info.listen_only;
+        it.info = info;
+        it.config_error = err.clone();
+        match err {
+            Some(e) if on && it.info.listen_only => Err(e),
+            _ => Ok(()),
+        }
     }
 
     /// Scan /sys/class/net for CAN interfaces.
@@ -228,7 +292,7 @@ impl IfaceTable {
                     continue;
                 }
                 let id = identify(&name);
-                let (info, err) = configure(cfg, &name, &id);
+                let (info, err, tx_allowed) = configure(cfg, &name, &id, false);
                 if let Some(e) = &err {
                     eprintln!("canlogd: {name}: {e}");
                 }
@@ -240,7 +304,7 @@ impl IfaceTable {
                     info.serial,
                     info.usb_port
                 );
-                let i = self.insert(ifindex, info, err);
+                let i = self.insert(ifindex, info, err, tx_allowed);
                 events.push(Event::Added(i));
             }
         }

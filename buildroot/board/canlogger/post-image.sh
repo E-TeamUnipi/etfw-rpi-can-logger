@@ -4,6 +4,16 @@
 set -e
 
 BOARD_DIR="$(dirname "$0")"
+. "${BOARD_DIR}/local-conf.sh"
+
+# logger.conf on the boot partition: the repo's defaults plus local.conf
+# (later keys win). Regenerated on every run so overrides don't pile up.
+CONF_OUT="${BINARIES_DIR}/rpi-firmware/logger.conf"
+mkdir -p "${BINARIES_DIR}/rpi-firmware"
+cp "${BOARD_DIR}/logger.conf" "${CONF_OUT}"
+if [ -f "${LOCAL_CONF}" ]; then
+	{ echo; echo "# --- local overrides (local.conf at build time) ---"; local_conf_runtime; } >> "${CONF_OUT}"
+fi
 GENIMAGE_CFG="${BINARIES_DIR}/genimage.cfg"
 GENIMAGE_TMP="${BUILD_DIR}/genimage.tmp"
 

@@ -1,7 +1,7 @@
 {
   "name": "CAN Logger",
   "short_name": "CAN Logger",
-  "description": "Status, live data and time sync for the CAN logger over Bluetooth",
+  "description": "CAN logger app: live data over Wi-Fi or Bluetooth, DBC decoding, bus load and response-time analysis, plots, sending. Works offline with log files.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -1,0 +1,21 @@
+[package]
+name = "canlog-wasm"
+description = "WebAssembly bindings of canlog-analysis for the web app (built with wasm-pack, see webapp/build.sh)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+canlog-analysis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+
+# Rust emits bulk-memory and other post-MVP features (Baseline in every
+# current browser); the wasm-opt that wasm-pack downloads must allow them.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals", "--enable-reference-types", "--enable-multivalue"]

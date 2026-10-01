@@ -9,260 +9,33 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>CAN Logger</title>
-<style>
-:root{--bg:#f4f5f7;--card:#fff;--fg:#16181d;--mute:#6b7280;--line:#e5e7eb;--acc:#2563eb;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--fg:#e8eaed;--mute:#9aa1ab;--line:#2a2e36;--acc:#60a5fa;--ok:#22c55e;--warn:#f59e0b;--bad:#f87171}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
-header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px}
-header h1{font-size:16px;margin:0;font-weight:650;flex:1}
-.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--line);color:var(--mute)}
-.pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
-.pill.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
-.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent)}
-.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
-.pill.ok i{animation:pulse 1.6s infinite}
-@keyframes pulse{50%{opacity:.25}}
-main{max-width:640px;margin:0 auto;padding:12px 16px 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
-section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}
-section h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:0 0 10px;font-weight:600;display:flex;align-items:center;gap:8px}
-section h2 span{flex:1}
-.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px}
-.kv div b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
-.kv div small{color:var(--mute);font-size:12px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-input,button{font:inherit;color:inherit}
-input[type=text],input[type=password]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;flex:1 1 160px}
-button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
-button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
-button.big{width:100%;padding:14px;font-size:16px}
-button:disabled{opacity:.5}
-.bus{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:8px 0;border-top:1px solid var(--line)}
-.bus:first-child{border-top:0;padding-top:0}
-.bus .n{font-weight:650}.bus .n small{font-weight:400;color:var(--mute);margin-left:6px}
-.bus .meta{color:var(--mute);font-size:13px;grid-column:1/-1}
-.badge{font-size:12px;padding:2px 8px;border-radius:6px;font-weight:600;background:var(--line)}
-.badge.ok{color:var(--ok)}.badge.warn{color:var(--warn)}.badge.bad{color:var(--bad)}
-table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{padding:5px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
-th{color:var(--mute);font-weight:600;font-size:12px}
-td.m{font-family:var(--mono)} td.data{white-space:normal;word-break:break-all;min-width:23ch}
-td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
-tr.stale td{color:var(--mute)}
-.muted{color:var(--mute)} .small{font-size:13px}
-.hidden{display:none!important}
-.switch{display:flex;align-items:center;gap:10px}
-.switch input{width:44px;height:26px;appearance:none;background:var(--line);border-radius:13px;position:relative;cursor:pointer;transition:background .2s;flex:none}
-.switch input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}
-.switch input:checked{background:var(--ok)} .switch input:checked::after{left:21px}
-#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
-#toast.on{opacity:.92}
-a{color:var(--acc)}
-</style>
+<link rel="stylesheet" href="vendor/uPlot.min.css">
+<link rel="stylesheet" href="app.css">
+<script src="vendor/uPlot.iife.min.js" defer></script>
+<script type="module" src="js/main.js"></script>
 </head>
 <body>
 <header>
-  <h1 id="title">CAN Logger</h1>
-  <span id="state" class="pill"><i></i><span>not connected</span></span>
+  <h1>CAN Logger</h1>
+  <output id="conn" data-state="idle">not connected</output>
+  <nav>
+    <a href="#logger">Logger</a>
+    <a href="#data">Data</a>
+    <a href="#plots">Plots</a>
+    <a href="#send">Send</a>
+    <a href="#analysis">CAN analysis</a>
+    <a href="#buses">Buses</a>
+  </nav>
 </header>
 <main>
-  <section id="connectCard">
-    <h2><span>Bluetooth</span></h2>
-    <div id="unsupported" class="hidden small">
-      <p><b>This browser has no Web Bluetooth.</b></p>
-      <p>Android / Windows / macOS / Linux / ChromeOS: open this page in <b>Chrome</b> or <b>Edge</b>.<br>
-      iPhone / iPad: Safari does not support Web Bluetooth. Install the free <b>Bluefy</b> browser and open this page there.</p>
-      <p>You can still use the Wi-Fi page: join the logger's Wi-Fi and open <a id="wifiLink0" href="http://192.168.4.1/">http://192.168.4.1</a>.</p>
-    </div>
-    <div id="supported">
-      <button class="big" id="connect">Connect to logger</button>
-      <p class="muted small" id="connHint">Your phone's clock is sent to the logger on connect, so recordings get real dates.</p>
-      <div class="row">
-        <input type="password" id="pin" placeholder="PIN (only if configured)" autocomplete="off" inputmode="numeric">
-      </div>
-    </div>
-  </section>
-
-  <div id="dash" class="hidden" style="display:grid;gap:12px">
-    <section>
-      <h2><span>Session <b id="sid"></b></span><button class="ghost" id="disconnect" style="padding:4px 10px;font-size:12px">Disconnect</button></h2>
-      <div class="kv">
-        <div><b id="dur">–</b><small>duration</small></div>
-        <div><b id="fps">–</b><small>frames/s</small></div>
-        <div><b id="frames">–</b><small>frames</small></div>
-        <div><b id="drop">–</b><small>dropped</small></div>
-      </div>
-      <div class="row">
-        <input type="text" id="name" placeholder="Name this recording" maxlength="40" autocomplete="off">
-        <button id="saveName">Save</button>
-      </div>
-      <div class="row">
-        <input type="text" id="markText" placeholder="Marker text" maxlength="100" autocomplete="off">
-        <button class="ghost" id="mark">Marker</button>
-        <button class="ghost" id="newSess">New session</button>
-      </div>
-      <p class="muted small" id="timeinfo"></p>
-    </section>
-
-    <section>
-      <h2><span>Buses</span></h2>
-      <div id="buses" class="muted small">–</div>
-    </section>
-
-    <section>
-      <h2><span>Logger</span></h2>
-      <div class="kv">
-        <div><b id="ring">–</b><small>ring used</small></div>
-        <div><b id="cap">–</b><small>holds at this rate</small></div>
-        <div><b id="werr">–</b><small>write errors / lost</small></div>
-        <div><b id="pwr">–</b><small>supply</small></div>
-      </div>
-      <div class="row switch">
-        <input type="checkbox" id="wifi"><label for="wifi">Wi-Fi hotspot <span class="muted small" id="wifiInfo"></span></label>
-      </div>
-      <p class="small">Downloads: join Wi-Fi <b id="ssid">–</b> and open <a id="wifiLink" href="http://192.168.4.1/" target="_blank" rel="noopener">http://192.168.4.1</a></p>
-      <p class="muted small" id="lastRes"></p>
-    </section>
-
-    <section>
-      <h2><span>Live data</span><button class="ghost" id="pause" style="padding:4px 10px;font-size:12px">Pause</button></h2>
-      <table>
-        <thead><tr><th>Bus</th><th>ID</th><th>Data</th><th class="r">Hz</th></tr></thead>
-        <tbody id="live"></tbody>
-      </table>
-      <p class="muted small">Up to 40 ids, refreshed about once per second over Bluetooth. Long CAN FD payloads are cut to 16 bytes.</p>
-    </section>
-  </div>
+  <article id="view-logger" hidden></article>
+  <article id="view-data" hidden></article>
+  <article id="view-buses" hidden></article>
+  <article id="view-analysis" hidden></article>
+  <article id="view-plots" hidden></article>
+  <article id="view-send" hidden></article>
 </main>
-<div id="toast"></div>
-<script>
-const SVC = '6e7c0001-4f3a-4b8e-9a6d-2c1b0e5f7a10';
-const CH_STATUS = '6e7c0002-4f3a-4b8e-9a6d-2c1b0e5f7a10';
-const CH_LIVE = '6e7c0003-4f3a-4b8e-9a6d-2c1b0e5f7a10';
-const CH_CMD = '6e7c0004-4f3a-4b8e-9a6d-2c1b0e5f7a10';
-const $ = id => document.getElementById(id);
-const dec = new TextDecoder(), enc = new TextEncoder();
-let dev = null, chStatus = null, chLive = null, chCmd = null, timer = null, paused = false, nameDirty = false, busy = false;
-
-// GATT allows one operation at a time: chain everything
-let chain = Promise.resolve();
-const gatt = fn => (chain = chain.then(fn, fn));
-
-function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),2500)}
-function setState(cls,t){const p=$('state');p.className='pill '+cls;p.lastElementChild.textContent=t}
-function fmtDur(s){s=Math.floor(s||0);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}h ${String(m).padStart(2,'0')}m`:m?`${m}m ${String(x).padStart(2,'0')}s`:`${x}s`}
-function fmtNum(n){return n==null?'–':n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':String(n)}
-function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-
-try{ $('pin').value = localStorage.getItem('canlog_pin') || '' }catch(e){}
-$('pin').onchange = () => { try{ localStorage.setItem('canlog_pin', $('pin').value) }catch(e){} };
-
-async function send(obj){
-  const pin = $('pin').value.trim();
-  if(pin) obj.pin = pin;
-  const bytes = enc.encode(JSON.stringify(obj) + '\n');
-  await gatt(() => chCmd.writeValueWithResponse ? chCmd.writeValueWithResponse(bytes) : chCmd.writeValue(bytes));
-}
-
-async function readJson(ch){
-  const v = await gatt(() => ch.readValue());
-  return JSON.parse(dec.decode(v));
-}
-
-function render(s){
-  const map={recording:['ok','Recording'],power_hold:['warn','Power lost – holding'],no_storage:['bad','No storage'],starting:['warn','Starting'],offline:['bad','Logger offline'],stopped:['bad','Stopped']};
-  const [c,t]=map[s.st]||['warn',s.st];
-  setState(c, s.sim ? t+' (sim)' : t);
-  $('sid').textContent = s.sid!=null ? '#'+s.sid : '';
-  $('dur').textContent = fmtDur(s.dur);
-  $('fps').textContent = s.fps==null?'–':Math.round(s.fps);
-  $('frames').textContent = fmtNum(s.fr);
-  $('drop').textContent = fmtNum(s.drop);
-  if(!nameDirty && document.activeElement!==$('name')) $('name').value = s.name||'';
-  $('timeinfo').textContent = s.t ? `Logger clock ${new Date(s.t).toLocaleString()} (from ${s.tsrc}).` : 'Logger clock not set.';
-  $('ring').textContent = s.wrap ? 'full' : (s.ring??'–')+'%';
-  $('cap').textContent = s.hrs==null?'–': s.hrs>48 ? (s.hrs/24).toFixed(1)+' d' : s.hrs+' h';
-  $('werr').textContent = `${s.werr??0} / ${s.lost??0}`;
-  $('pwr').textContent = s.pf ? 'DOWN' : 'ok';
-  $('pwr').style.color = s.pf ? 'var(--bad)' : '';
-  if(s.wifi){
-    if(!busy) $('wifi').checked = s.wifi.on;
-    $('wifiInfo').textContent = s.wifi.on ? (s.wifi.up ? '(on)' : '(starting)') : '(off)';
-    $('ssid').textContent = s.wifi.ssid;
-    $('wifiLink').href = `http://${s.wifi.ip}/`; $('wifiLink').textContent = `http://${s.wifi.ip}`;
-  }
-  $('lastRes').textContent = s.res ? 'Last command: '+s.res : '';
-  $('buses').innerHTML = (s.if||[]).map(i=>{
-    const st = !i.p?['bad','unplugged']:i.st==='bus-off'?['bad','bus-off']:i.st==='error-passive'?['warn','error passive']:i.fps>0?['ok','receiving']:['','idle'];
-    return `<div class="bus"><div class="n">${esc(i.n)}<small>${esc(i.l)}</small></div><div><span class="badge ${st[0]}">${st[1]}</span></div>
-      <div class="meta">${i.br?(i.br/1000)+' kbit/s':'virtual'} · ${Math.round(i.fps)} fr/s · load ${i.ld}% · ${i.err} errors${i.lo?'':' · ACKing'}</div></div>`;
-  }).join('') || 'No CAN adapters detected.';
-}
-
-function renderLive(rows){
-  $('live').innerHTML = rows.map(([bus,id,data,hz,age]) =>
-    `<tr class="${age>2000?'stale':''}"><td>${esc(bus)}</td><td class="m">${id}</td><td class="m data">${data.replace(/(..)/g,'$1 ').trim()}</td><td class="r">${hz}</td></tr>`
-  ).join('') || '<tr><td colspan="4" class="muted">No frames</td></tr>';
-}
-
-async function poll(){
-  if(!dev || !dev.gatt.connected) return;
-  try{
-    render(await readJson(chStatus));
-    if(!paused) renderLive(await readJson(chLive));
-  }catch(e){ console.warn(e); }
-}
-
-function onDisconnected(){
-  clearInterval(timer); timer = null;
-  setState('bad','disconnected');
-  $('connect').textContent = 'Reconnect';
-  $('connectCard').classList.remove('hidden');
-}
-
-async function connectGatt(){
-  setState('warn','connecting');
-  const server = await dev.gatt.connect();
-  const svc = await server.getPrimaryService(SVC);
-  chStatus = await svc.getCharacteristic(CH_STATUS);
-  chLive = await svc.getCharacteristic(CH_LIVE);
-  chCmd = await svc.getCharacteristic(CH_CMD);
-  chain = Promise.resolve();
-  $('title').textContent = dev.name || 'CAN Logger';
-  await send({cmd:'timesync', utc_ms: Date.now()});
-  $('connectCard').classList.add('hidden');
-  $('dash').classList.remove('hidden');
-  await poll();
-  timer = setInterval(poll, 1000);
-}
-
-$('connect').onclick = async () => {
-  try{
-    if(!dev){
-      dev = await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]});
-      dev.addEventListener('gattserverdisconnected', onDisconnected);
-    }
-    await connectGatt();
-  }catch(e){
-    if(e.name !== 'NotFoundError') toast(e.message);
-    setState('', 'not connected');
-  }
-};
-$('disconnect').onclick = () => { if(dev && dev.gatt.connected) dev.gatt.disconnect(); };
-$('name').addEventListener('input', () => nameDirty = true);
-$('saveName').onclick = async () => { try{ await send({cmd:'name', name:$('name').value}); nameDirty=false; toast('Name sent'); }catch(e){ toast(e.message) } };
-$('mark').onclick = async () => { try{ await send({cmd:'mark', text:$('markText').value||'marker'}); $('markText').value=''; toast('Marker sent'); }catch(e){ toast(e.message) } };
-$('newSess').onclick = async () => { if(!confirm('Close this session and start a new one?')) return; try{ await send({cmd:'new_session'}); nameDirty=false; toast('New session started'); }catch(e){ toast(e.message) } };
-$('wifi').onchange = async (e) => { busy = true; try{ await send({cmd:'wifi', on:e.target.checked}); toast('Wi-Fi '+(e.target.checked?'on':'off')); }catch(err){ toast(err.message) } setTimeout(()=>busy=false, 3000); };
-$('pause').onclick = () => { paused=!paused; $('pause').textContent = paused?'Resume':'Pause'; };
-
-if(!navigator.bluetooth){
-  $('unsupported').classList.remove('hidden');
-  $('supported').classList.add('hidden');
-}
-if('serviceWorker' in navigator && location.protocol === 'https:'){
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
-}
-</script>
+<div id="toast" popover="manual" role="status"></div>
+<noscript>This app needs JavaScript.</noscript>
 </body>
 </html>

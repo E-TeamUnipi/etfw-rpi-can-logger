@@ -208,15 +208,18 @@ pub fn export<S: BlockStore, W: Write>(ring: &mut Ring<S>, s: &SessionInfo, fmt:
                         if esi != 0 {
                             flags |= 1 << 14;
                         }
-                        write!(line, "{rel:>11.6} CANFD {ch:>3} Rx   {idtxt:>9}                                   {brs} {esi} {dlc:x} {:>2}", data.len())?;
+                        let dir = if *fd_flags & CAN_TX_LOCAL != 0 { "Tx" } else { "Rx" };
+                        write!(line, "{rel:>11.6} CANFD {ch:>3} {dir}   {idtxt:>9}                                   {brs} {esi} {dlc:x} {:>2}", data.len())?;
                         for b in data.iter() {
                             write!(line, " {b:02X}")?;
                         }
                         writeln!(line, "        0    0 {flags:>8X}        0        0        0        0        0")?;
                     } else if id & CAN_RTR_FLAG != 0 {
-                        writeln!(line, "{rel:>11.6} {ch}  {idtxt:<15} Rx   r {len:x}")?;
+                        let dir = if *fd_flags & CAN_TX_LOCAL != 0 { "Tx" } else { "Rx" };
+                        writeln!(line, "{rel:>11.6} {ch}  {idtxt:<15} {dir}   r {len:x}")?;
                     } else {
-                        write!(line, "{rel:>11.6} {ch}  {idtxt:<15} Rx   d {len:x}")?;
+                        let dir = if *fd_flags & CAN_TX_LOCAL != 0 { "Tx" } else { "Rx" };
+                        write!(line, "{rel:>11.6} {ch}  {idtxt:<15} {dir}   d {len:x}")?;
                         for b in data.iter() {
                             write!(line, " {b:02X}")?;
                         }

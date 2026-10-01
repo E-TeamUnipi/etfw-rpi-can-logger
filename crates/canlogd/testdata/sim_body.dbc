@@ -1,0 +1,51 @@
+VERSION ""
+
+NS_ :
+	CM_
+	BA_DEF_
+	BA_
+
+BS_:
+
+BU_: ECU Body Logger
+
+BO_ 2364539904 EEC1: 8 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Byte1 : 8|8@1+ (1,0) [0|255] "" Logger
+
+BO_ 2566844672 CCVS: 8 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Byte1 : 8|8@1+ (1,0) [0|255] "" Logger
+
+BO_ 2566843904 ET1: 8 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Byte1 : 8|8@1+ (1,0) [0|255] "" Logger
+
+BO_ 2566842624 LFC: 8 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Byte1 : 8|8@1+ (1,0) [0|255] "" Logger
+
+BO_ 291 FdStatus: 32 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ Word : 8|16@1+ (1,0) [0|65535] "" Logger
+
+BO_ 1110 FdBulk: 64 Body
+ SG_ Counter : 0|8@1+ (1,0) [0|255] "" Logger
+ SG_ LastByte : 504|8@1+ (1,0) [0|255] "" Logger
+
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 10000;
+BA_DEF_ BO_ "VFrameFormat" ENUM "StandardCAN","ExtendedCAN","reserved","J1939PG","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","reserved","StandardCAN_FD","ExtendedCAN_FD";
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_DEF_DEF_ "VFrameFormat" "StandardCAN";
+BA_ "GenMsgCycleTime" BO_ 2364539904 20;
+BA_ "VFrameFormat" BO_ 2364539904 1;
+BA_ "GenMsgCycleTime" BO_ 2566844672 100;
+BA_ "VFrameFormat" BO_ 2566844672 1;
+BA_ "GenMsgCycleTime" BO_ 2566843904 1000;
+BA_ "VFrameFormat" BO_ 2566843904 1;
+BA_ "GenMsgCycleTime" BO_ 2566842624 1000;
+BA_ "VFrameFormat" BO_ 2566842624 1;
+BA_ "GenMsgCycleTime" BO_ 291 50;
+BA_ "VFrameFormat" BO_ 291 14;
+BA_ "GenMsgCycleTime" BO_ 1110 200;
+BA_ "VFrameFormat" BO_ 1110 14;

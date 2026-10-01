@@ -41,6 +41,16 @@ pub struct Shared {
     pub status_json: Mutex<String>,
     pub live: Mutex<Vec<serde_json::Value>>,
     pub sim: bool,
+    /// Clients of the binary frame stream (`stream` command).
+    pub streams: Mutex<Vec<std::sync::mpsc::SyncSender<Arc<Vec<u8>>>>>,
+    pub stream_count: std::sync::atomic::AtomicUsize,
+}
+
+/// A command from a control client, with a channel for commands that
+/// answer with a result (sending frames).
+pub struct Request {
+    pub cmd: canlog_core::proto::Command,
+    pub reply: Option<std::sync::mpsc::Sender<serde_json::Value>>,
 }
 
 impl Shared {
@@ -155,6 +165,8 @@ fn main() {
         status_json: Mutex::new("{}".into()),
         live: Mutex::new(Vec::new()),
         sim: args.sim,
+        streams: Mutex::new(Vec::new()),
+        stream_count: std::sync::atomic::AtomicUsize::new(0),
     });
 
     let ram_mb = cfg.u64_or("ram_buffer_mb", 32).clamp(1, 1024) as usize;

@@ -1,0 +1,10 @@
+[package]
+name = "canlog-analysis"
+description = "CAN frame timing, log import, bus statistics and response-time analysis (no I/O, builds for WebAssembly)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+canlog-dbc.workspace = true
+serde.workspace = true

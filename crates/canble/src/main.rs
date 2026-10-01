@@ -91,7 +91,8 @@ async fn status_bytes(ctx: &Ctx) -> Vec<u8> {
             a.iter()
                 .map(|i| {
                     json!({"n": i["name"], "l": i["label"], "br": i["bitrate"], "st": i["state"], "p": i["present"],
-                           "fps": i["fps"], "ld": i["load_pct"], "err": i["errors"], "lo": i["listen_only"]})
+                           "fps": i["fps"], "ld": i["load_pct"], "lp": i["load_peak_pct"], "err": i["errors"], "lo": i["listen_only"],
+                           "ta": i["tx_allowed"], "tx": i["tx_mode"], "dbr": i["dbitrate"]})
                 })
                 .collect()
         })
@@ -153,7 +154,8 @@ async fn handle_line(ctx: &Ctx, line: &str) -> String {
             set_wifi(on);
             format!("wifi {}", if on { "on" } else { "off" })
         }
-        "timesync" | "name" | "mark" | "new_session" => {
+        "send" | "tx_mode" if ctx.pin.is_none() => format!("{cmd} refused: set control_pin in logger.conf to allow sending"),
+        "timesync" | "name" | "mark" | "new_session" | "send" | "tx_mode" => {
             if cmd == "timesync" {
                 v["source"] = json!("ble");
             }
@@ -304,8 +306,9 @@ fn main() {
     }
     let ctx = Arc::new(Ctx {
         ctl: ctl_path,
-        pin: cfg.get("ble_pin").map(str::to_string),
-        ssid: cfg.str_or("wifi_ssid", "canlogger"),
+        // control_pin also guards sending over Wi-Fi; ble_pin is the older name
+        pin: cfg.get("control_pin").or(cfg.get("ble_pin")).map(str::to_string),
+        ssid: cfg.str_or("wifi_ssid", "ET-18"),
         ap_ip: cfg.str_or("wifi_ip", "192.168.4.1"),
         snapshots: Mutex::new(HashMap::new()),
         pending: Mutex::new(HashMap::new()),

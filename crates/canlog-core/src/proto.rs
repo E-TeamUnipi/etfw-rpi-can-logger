@@ -2,7 +2,9 @@
 //!
 //! Newline-delimited JSON over a Unix stream socket. Each request line gets
 //! one response line, except `subscribe`, which streams a status line every
-//! second until the client disconnects.
+//! second until the client disconnects, and `stream`, which answers one line
+//! and then switches the connection to binary frame records (see
+//! `STREAM_RECORD`).
 
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, BufReader, Write};
@@ -39,6 +41,49 @@ pub enum Command {
     },
     /// Simulator only: pretend the power-fail input changed.
     SimPowerfail { on: bool },
+    /// Every received frame as binary records, until the client disconnects.
+    /// A slow client loses batches rather than slowing the logger.
+    Stream,
+    /// Send one frame. Only on interfaces with `can.<x>.tx = 1`. The first
+    /// send switches the interface out of listen-only (it then ACKs frames)
+    /// with one-shot transmission, and it stays that way until `tx_mode`
+    /// turns it off or the logger restarts.
+    Send {
+        /// Interface name (can0) or label.
+        iface: String,
+        id: u32,
+        #[serde(default)]
+        ext: bool,
+        #[serde(default)]
+        fd: bool,
+        #[serde(default)]
+        brs: bool,
+        /// Payload as hex.
+        data: String,
+    },
+    /// Switch an interface between normal (TX) mode and listen-only.
+    TxMode { iface: String, on: bool },
+}
+
+/// Binary stream record, little endian: `ts_ns i64` (Unix time when the
+/// logger clock is synced, else boot time), `id u32` (without flag bits),
+/// `iface u8`, `flags u8` (STREAM_F_*), `len u8`, `0 u8`, `data[len]`.
+pub const STREAM_RECORD: usize = 16;
+pub const STREAM_F_EXT: u8 = 1;
+pub const STREAM_F_RTR: u8 = 2;
+pub const STREAM_F_ERR: u8 = 4;
+pub const STREAM_F_FD: u8 = 8;
+pub const STREAM_F_BRS: u8 = 16;
+pub const STREAM_F_ESI: u8 = 32;
+pub const STREAM_F_TX: u8 = 64;
+
+/// Hex payload ("DEADBEEF", spaces allowed) to bytes.
+pub fn parse_hex(s: &str) -> Option<Vec<u8>> {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
 }
 
 pub fn ok() -> serde_json::Value {

@@ -1,0 +1,9 @@
+[package]
+name = "canlog-dbc"
+description = "DBC parser and CAN signal decoder/encoder (no I/O, builds for the Pi and for WebAssembly)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true

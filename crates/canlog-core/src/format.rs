@@ -121,6 +121,8 @@ pub const CAN_SFF_MASK: u32 = 0x0000_07FF;
 pub const CAN_EFF_MASK: u32 = 0x1FFF_FFFF;
 pub const CANFD_BRS: u8 = 0x01;
 pub const CANFD_ESI: u8 = 0x02;
+/// Record flag on CAN/CAN FD records: frame was sent by this logger.
+pub const CAN_TX_LOCAL: u8 = 0x80;
 
 #[inline]
 fn rd16(b: &[u8], o: usize) -> u16 {

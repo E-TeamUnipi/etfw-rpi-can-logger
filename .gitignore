@@ -3,3 +3,12 @@ VENDOR/
 /buildroot-src
 /output*
 *.img
+
+# secrets and private data, never committed
+/buildroot/board/canlogger/local.conf
+/buildroot/board/canlogger/authorized_keys
+*.dbc
+*.asc
+*.log.gz
+!/crates/**/testdata/*
+/webapp/pkg

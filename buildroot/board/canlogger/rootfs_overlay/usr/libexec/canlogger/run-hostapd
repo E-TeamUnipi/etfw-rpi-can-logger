@@ -17,18 +17,26 @@ if ! wait_for /sys/class/net/wlan0 10; then
 fi
 
 IP=$(conf wifi_ip 192.168.4.1)
-MAC=$(tr -d ':' < /sys/class/net/wlan0/address | tail -c 5 | tr a-f A-F)
-SSID=$(conf wifi_ssid "canlogger-$MAC")
-PASS=$(conf wifi_password canlogger)
-if [ ${#PASS} -lt 8 ]; then
-	logger -t hostapd "wifi_password must have at least 8 characters, using 'canlogger'"
-	PASS=canlogger
+SSID=$(conf wifi_ssid ET-18)
+# wifi_psk (the 64-hex-digit key) takes precedence over the plain password
+PSK=$(conf wifi_psk)
+if [ -n "$PSK" ] && echo "$PSK" | grep -qE '^[0-9a-fA-F]{64}$'; then
+	KEYLINE="wpa_psk=$PSK"
+else
+	[ -n "$PSK" ] && logger -t hostapd "wifi_psk must be 64 hex digits, ignoring it"
+	PASS=$(conf wifi_password canlogger)
+	if [ ${#PASS} -lt 8 ] || [ ${#PASS} -gt 63 ]; then
+		logger -t hostapd "wifi_password must have 8 to 63 characters, using 'canlogger'"
+		PASS=canlogger
+	fi
+	KEYLINE="wpa_passphrase=$PASS"
 fi
 
 ip addr flush dev wlan0
 ip addr add "$IP/24" dev wlan0
 ip link set wlan0 up
 
+umask 077
 cat > /run/hostapd.conf <<EOC
 interface=wlan0
 driver=nl80211
@@ -43,7 +51,7 @@ auth_algs=1
 wpa=2
 wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
-wpa_passphrase=$PASS
+$KEYLINE
 EOC
 echo "$SSID" > /run/wifi.ssid
 hostapd /run/hostapd.conf 2>&1 | logger -t hostapd

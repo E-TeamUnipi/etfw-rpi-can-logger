@@ -2,26 +2,34 @@
 
 A Raspberry Pi that boots in a few seconds and logs every frame from every
 USB-CAN adapter plugged into it. It survives power cuts because it has no
-filesystem to corrupt, and you can check it and download logs from a phone.
+filesystem to corrupt. An app on your phone or laptop decodes the traffic
+with your DBC files, plots signals, analyses bus load and response times, and
+can send frames.
 
 ```
- USB-CAN adapters ──► canlogd ──► raw ring partition on the SD card (p3)
+ USB-CAN adapters ◄─► canlogd ──► raw ring partition on the SD card (p3)
                         │  ▲
           control socket│  │power-fail GPIO (12 V comparator)
                         ▼
-       canweb (Wi-Fi hotspot, http://192.168.4.1)   canble (Bluetooth LE)
-       status · live data · downloads               status · live data · time sync
-                                                    ▲
-                                    webapp/ (Web Bluetooth page, hosted on GitHub Pages)
+       canweb (Wi-Fi ET-18, http://192.168.4.1)     canble (Bluetooth LE)
+       status page + API: status, frame stream,     status · ~1 Hz live data ·
+       downloads, commands, sending                 commands, sending
+                        ▲                                ▲
+                        └──────── webapp/ ───────────────┘
+              analysis app (PWA on GitHub Pages, works offline):
+              DBC decoding · plots · bus load · response time · send
 ```
 
 | Part | What it does |
 |---|---|
 | `crates/canlog-core` | On-disk ring format, head search, session list, candump/ASC export, `canring` CLI |
 | `crates/canlogd` | The logger. The only process that writes to the ring. |
-| `crates/canweb` | HTTP page on the hotspot: status, live table, naming, markers, downloads |
+| `crates/canweb` | Status page on the hotspot, and the HTTP API the app uses (CORS for the app's origin) |
 | `crates/canble` | BLE GATT service: status and live data at 1 Hz, time sync, commands, Wi-Fi on/off |
-| `webapp/` | Installable web app (PWA) that talks to `canble` via Web Bluetooth |
+| `crates/canlog-dbc` | DBC parser, signal decoder/encoder (multiplexing, CAN FD, float signals) |
+| `crates/canlog-analysis` | Frame timing on the wire, log import, bus load, response-time analysis, plot series |
+| `crates/canlog-wasm` | The two crates above compiled to WebAssembly for the app |
+| `webapp/` | The app: vanilla JS + the wasm engine, installable, works offline |
 | `buildroot/` | BR2_EXTERNAL tree: defconfigs for Pi 3 B, Pi 4 and Pi 5, kernel fragment, init, services |
 
 If `canweb` or `canble` crashes, recording continues. `canlogd` is restarted by
@@ -94,14 +102,36 @@ BOOT_UART=0
 1. On first boot, the logger creates partition 3 (the raw ring) in the free
    space of the card and formats it. Every later boot finds the newest
    block in a few milliseconds and continues after it.
-2. The Wi-Fi hotspot `canlogger-XXXX` comes up with password `canlogger`,
+2. The Wi-Fi hotspot `ET-18` comes up (password from `local.conf`, below),
    and the BLE service advertises as `CANLog-XXXX`.
 3. Join the hotspot and open **http://192.168.4.1** (any `http://` address
-   works). The page syncs the logger's clock from your phone automatically.
+   works) for the status page, or use the app (section 5). Both sync the
+   logger's clock from your phone automatically.
 
-**Change the passwords.** The Wi-Fi password is `wifi_password` in
-`logger.conf`. The root password (`canlogger`, used for SSH) is
-`BR2_TARGET_GENERIC_ROOT_PASSWD` in the defconfig. For SSH, run
+### Passwords and PINs stay out of git
+
+Secrets go in `buildroot/board/canlogger/local.conf`, which git ignores.
+Copy `local.conf.example` and fill it in before building:
+
+```
+wifi_password = ...          # or wifi_psk = <64 hex digits>
+control_pin = ...            # needed for sending frames and BLE commands
+root_password = ...          # SSH; hashed into /etc/shadow at build time
+```
+
+The `logger.conf` keys in it are appended to the `logger.conf` on the boot
+partition. Without `root_password`, root has no password and SSH works only
+with a key in `buildroot/board/canlogger/authorized_keys` (also ignored by
+git). Without `wifi_password` the Wi-Fi password is `canlogger`.
+
+`wifi_psk` is the hashed form of the Wi-Fi password (`wpa_passphrase ET-18
+'password'` prints it). It hides the readable password, but it is still the
+network key: anyone who has it can join.
+
+For images built by GitHub Actions, store the content of your `local.conf`
+as the repository secret `CANLOGGER_LOCAL_CONF`.
+
+You can also edit `logger.conf` on the card itself. For SSH, run
 `ssh root@192.168.4.1`.
 
 ## 3. Configuration: `logger.conf`
@@ -120,12 +150,19 @@ The main settings are:
 - `powerfail_gpio`: the GPIO wired to your 12 V comparator (see below).
 - `wifi = on|off`: with `off`, the hotspot only starts when you switch it on
   over Bluetooth.
-- `ble_pin`: if set, Bluetooth commands must carry this PIN.
+- `control_pin`: Bluetooth commands and sending frames (Wi-Fi or Bluetooth)
+  must carry this PIN. Sending is refused while no PIN is set.
+- `can.<serial|usb-port|ifname>.tx = 1`: allow sending frames on that
+  adapter (see "Sending frames").
+- `app_origin`: web pages allowed to call the HTTP API from a browser (the
+  app's GitHub Pages address).
 
 The file itself documents every key.
 
 ## 4. Getting data out
 
+- **The app** (section 5): "Open in app" on a recorded session, or download
+  it as a file.
 - **Hotspot web page.** Each session has **candump .log** and **Vector .asc**
   downloads, gzip-compressed by default, with an optional "last N minutes"
   range. candump logs open in can-utils, python-can, SavvyCAN and cantools.
@@ -139,23 +176,84 @@ The file itself documents every key.
   On macOS, use `/dev/rdiskNs3`.
 - **On the Pi.** Run `canring /dev/mmcblk0p3 list`.
 
-## 5. Phone app (Bluetooth)
+## 5. The app
 
-Web Bluetooth only works on HTTPS pages, so the app is hosted on GitHub Pages:
+The app is a static web page published to GitHub Pages
+(`.github/workflows/pages.yml`, https://e-teamunipi.github.io/etfw-rpi-can-logger/).
+Open it once while online and install it ("Install" / "Add to Home screen").
+It then works offline.
 
-1. Push this repo to GitHub.
-2. In the repo settings, go to Pages → Source and choose **GitHub Actions**.
-   The included workflow publishes `webapp/`.
-3. Open the page once while you have internet, and choose **Install** / **Add
-   to Home screen**. After that it works offline in the car.
+**Getting data in:**
 
-It works in **Chrome or Edge** on Android, Windows, macOS, Linux and
-ChromeOS. On **iPhone/iPad**, use the free **Bluefy** browser, because
-Safari has no Web Bluetooth.
+- **Wi-Fi:** join `ET-18` and press "Connect over Wi-Fi". Chrome asks once to
+  allow access to devices on your local network: allow it. This uses Chrome's
+  Local Network Access, which lets the HTTPS app call `http://192.168.4.1`.
+  You get every frame live, session downloads, "Open in app" and sending.
+  On macOS also allow Chrome under System Settings → Privacy & Security →
+  Local Network (and Bluetooth).
+- **Bluetooth:** status, ~1 Hz snapshots of the last frame per id, commands,
+  sending.
+- **Log files:** candump `.log` or Vector `.asc`, optionally `.gz`. They are
+  read in the browser and never uploaded.
 
-When the app connects, it sends the phone's time. That gives every frame of
-the current session a real date, including frames recorded before you
-connected.
+**Tabs:**
+
+- **Buses:** bus profiles (name, bitrate, one or more DBC files; a CAN FD data bitrate is read from the DBC). Name a
+  profile like the adapter label (`can.<serial>.label`) and live data and
+  sessions from the logger map to it automatically. Other log buses are
+  mapped once in the Data tab. DBCs, profiles and workbooks are stored only in
+  this browser. "Export workspace" moves them to another device.
+- **Data:** what is loaded, bus to profile mapping, and the latest frame of
+  every message, decoded.
+- **CAN analysis:**
+  - measured bus load: average, and peaks over 10 ms, 100 ms and 1 s
+    windows. Frame lengths count the real stuff bits.
+  - per-message timing: period, jitter, largest gap compared with the DBC
+    cycle time.
+  - **response time from the DBC**, per message, from release to end of
+    transmission:
+    - worst case: the CAN schedulability analysis of Davis, Burns, Bril and
+      Lukkien (2007), with worst-case stuffing, blocking and interference;
+    - average: a bus simulation with random phases.
+
+    Event messages get a minimum gap typed into the table.
+- **Plots:** workbooks of plot panels, saved locally. Live, they scroll; on a
+  log, drag to zoom and double-click to zoom out.
+- **Send:** frames built from the DBC (signal values, multiplexing) or raw.
+
+| Browser | Log files, analysis, plots | Bluetooth | Wi-Fi to the logger |
+|---|---|---|---|
+| Chrome / Edge (Android, desktop) | yes | yes | yes |
+| Safari (Mac), iPhone | yes (install to Home Screen) | no | no: use http://192.168.4.1, download, then open the file |
+| Bluefy (iPhone) | yes | yes | no |
+
+### Sending frames
+
+Sending is allowed only on adapters with `can.<id>.tx = 1`, and only with
+the `control_pin`. The logger is listen-only by default: it never transmits
+or ACKs.
+
+- The first frame sent on an adapter switches it out of listen-only, in
+  one-shot mode (no automatic retransmission). From then on it **ACKs every
+  frame on that bus**.
+- It stays that way until you press "Back to listen-only" in the app, or the
+  logger restarts.
+- The switch is written to the log as a marker. The interface is down for a
+  moment while it switches.
+- Frames you send are recorded like any other frame and marked `Tx` in ASC
+  exports.
+
+### Building and testing the app locally
+
+```sh
+webapp/build.sh                          # wasm engine -> webapp/pkg (needs wasm-pack)
+python3 -m http.server 8000 -d webapp    # http://localhost:8000
+scripts/run-sim.sh                       # simulated logger on :8080 (Docker on macOS)
+```
+
+In the app, connect over Wi-Fi to `127.0.0.1:8080` (PIN `1234`). DBCs
+matching the simulated traffic are in `crates/canlogd/testdata/`
+(profiles "Powertrain (simulated)" and "Body (simulated)").
 
 ## 6. Power-fail input and hold-up
 
@@ -213,8 +311,8 @@ Put the hold-up on the **12 V side**, before the 5 V converter:
 ## 9. Trying it without hardware
 
 ```sh
-scripts/run-sim.sh      # Linux: simulated CAN traffic, web page on :8080
-cargo test              # ring format, head search, torn blocks, wrap, exports
+scripts/run-sim.sh      # simulated CAN traffic, web page/API on :8080 (Docker on macOS)
+cargo test              # ring format, exports, DBC, analysis (canlog-core/canlogd need Linux)
 ```
 
 ## Status and known gaps
@@ -226,6 +324,8 @@ The following has been **tested on a PC**:
 - ring wrap with concurrent readers
 - power-fail hold (simulated)
 - the web UI
+- the app over Wi-Fi against the simulator (headless Chrome): live stream,
+  DBC decoding, plots, bus load, response time, sending, session import
 - the BLE payloads
 - candump/ASC output, verified by parsing with python-can
 - the Buildroot defconfigs: every symbol resolves in Buildroot 2026.08
@@ -239,8 +339,10 @@ The following has **not been run on a Pi yet**:
 - the full Buildroot image build
 - real USB-CAN adapters
 - the GPIO power-fail input
-- BlueZ advertising
+- BlueZ advertising, and the app over Bluetooth
 - hostapd/dnsmasq
+- sending on a real adapter (listen-only/one-shot switching, `MSG_DONTROUTE`
+  marking of our own frames)
 - actual boot time
 
 Expect to adjust small things on first bring-up. The likeliest are Wi-Fi and

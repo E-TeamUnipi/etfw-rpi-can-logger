@@ -4,10 +4,15 @@
 //! Reads the ring partition directly (read-only) for exports, and talks to
 //! canlogd over its control socket for everything else. If this process
 //! crashes, recording is not affected.
+//!
+//! The analysis app (webapp/, served from GitHub Pages over HTTPS) uses the
+//! same API from the browser: CORS allows the origins in `app_origin`, and
+//! Chrome's Local Network Access lets an HTTPS page call this HTTP address.
 
 use axum::body::Body;
-use axum::extract::{Path as AxPath, Query, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::extract::{Path as AxPath, Query, Request, State};
+use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -21,7 +26,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 
@@ -33,6 +38,12 @@ struct App {
     ui_file: Option<PathBuf>,
     pretend_online: bool,
     device_name: String,
+    /// Browser origins allowed to call the API (CORS).
+    origins: Vec<String>,
+    /// Required for sending frames; sending is refused without one.
+    pin: Option<String>,
+    /// Where the analysis app is published (linked from the status page).
+    app_url: String,
 }
 
 type St = State<Arc<App>>;
@@ -77,8 +88,20 @@ async fn api_live(State(app): St) -> Response {
 
 async fn api_cmd(State(app): St, Json(mut body): Json<Value>) -> Response {
     let cmd = body.get("cmd").and_then(|c| c.as_str()).unwrap_or("").to_string();
-    if !["timesync", "name", "mark", "new_session", "sim_powerfail"].contains(&cmd.as_str()) {
+    if !["timesync", "name", "mark", "new_session", "sim_powerfail", "send", "tx_mode"].contains(&cmd.as_str()) {
         return error(StatusCode::BAD_REQUEST, "unknown command");
+    }
+    if cmd == "send" || cmd == "tx_mode" {
+        match &app.pin {
+            None => return error(StatusCode::FORBIDDEN, "sending is disabled: set control_pin in logger.conf"),
+            Some(p) if body.get("pin").and_then(|v| v.as_str()) != Some(p.as_str()) => {
+                return error(StatusCode::FORBIDDEN, "wrong PIN");
+            }
+            _ => {}
+        }
+    }
+    if let Some(o) = body.as_object_mut() {
+        o.remove("pin");
     }
     if cmd == "timesync" && body.get("source").is_none() {
         body["source"] = json!("http");
@@ -87,6 +110,74 @@ async fn api_cmd(State(app): St, Json(mut body): Json<Value>) -> Response {
         Ok(s) => json_text(s),
         Err(e) => error(StatusCode::SERVICE_UNAVAILABLE, e),
     }
+}
+
+/// Every received frame, as binary records (canlog_core::proto::STREAM_RECORD),
+/// until the client goes away. Interface indices match `ifaces[].idx` in
+/// /api/status.
+async fn api_stream(State(app): St) -> Response {
+    let open = async {
+        let mut s = UnixStream::connect(&app.ctl).await.map_err(|e| format!("logger not running ({e})"))?;
+        s.write_all(b"{\"cmd\":\"stream\"}\n").await.map_err(|e| e.to_string())?;
+        let mut r = BufReader::new(s);
+        let mut line = String::new();
+        r.read_line(&mut line).await.map_err(|e| e.to_string())?;
+        if !line.contains("\"ok\":true") {
+            return Err(line);
+        }
+        // binary data that arrived together with the answer line
+        let first = r.buffer().to_vec();
+        Ok::<_, String>((first, r.into_inner()))
+    };
+    let (first, mut sock) = match tokio::time::timeout(Duration::from_secs(3), open).await {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => return error(StatusCode::SERVICE_UNAVAILABLE, e),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, "logger timeout"),
+    };
+    let (tx, rx) = mpsc::channel::<Result<Bytes, io::Error>>(16);
+    tokio::spawn(async move {
+        if !first.is_empty() && tx.send(Ok(Bytes::from(first))).await.is_err() {
+            return;
+        }
+        let mut buf = vec![0u8; 1 << 16];
+        loop {
+            match sock.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if tx.send(Ok(Bytes::copy_from_slice(&buf[..n]))).await.is_err() {
+                        break; // browser went away; dropping the socket ends the stream
+                    }
+                }
+            }
+        }
+    });
+    let mut resp = Response::new(Body::from_stream(tokio_stream::wrappers::ReceiverStream::new(rx)));
+    let h = resp.headers_mut();
+    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    resp
+}
+
+// ---------------------------------------------------------------- CORS
+
+async fn cors(State(app): St, req: Request, next: Next) -> Response {
+    let origin = req.headers().get(header::ORIGIN).and_then(|v| v.to_str().ok()).map(str::to_string);
+    let allowed = origin.filter(|o| app.origins.iter().any(|a| a == o || a == "*"));
+    let preflight = req.method() == Method::OPTIONS;
+    let mut resp = if preflight { StatusCode::NO_CONTENT.into_response() } else { next.run(req).await };
+    let h = resp.headers_mut();
+    h.append(header::VARY, HeaderValue::from_static("Origin"));
+    if let Some(o) = allowed.and_then(|o| HeaderValue::from_str(&o).ok()) {
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, o);
+        if preflight {
+            h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST"));
+            h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("content-type"));
+            h.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("600"));
+            // Private Network Access preflights (older Chrome versions)
+            h.insert("access-control-allow-private-network", HeaderValue::from_static("true"));
+        }
+    }
+    resp
 }
 
 // ---------------------------------------------------------------- sessions
@@ -227,7 +318,7 @@ async fn index(State(app): St) -> Response {
         Some(p) => std::fs::read_to_string(p).unwrap_or_else(|_| UI.to_string()),
         None => UI.to_string(),
     };
-    let page = page.replace("{{DEVICE_NAME}}", &app.device_name);
+    let page = page.replace("{{DEVICE_NAME}}", &app.device_name).replace("{{APP_URL}}", &app.app_url);
     ([(header::CACHE_CONTROL, "no-store")], Html(page)).into_response()
 }
 
@@ -282,6 +373,14 @@ fn main() {
         ui_file,
         pretend_online: cfg.bool_or("http_pretend_online", true),
         device_name: cfg.str_or("device_name", "CAN logger"),
+        origins: cfg
+            .str_or("app_origin", "https://e-teamunipi.github.io")
+            .split(',')
+            .map(|s| s.trim().trim_end_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        pin: cfg.get("control_pin").or(cfg.get("ble_pin")).map(str::to_string),
+        app_url: cfg.str_or("app_url", "https://e-teamunipi.github.io/etfw-rpi-can-logger/"),
     });
 
     let router = Router::new()
@@ -289,6 +388,7 @@ fn main() {
         .route("/api/status", get(api_status))
         .route("/api/live", get(api_live))
         .route("/api/cmd", post(api_cmd))
+        .route("/api/stream", get(api_stream))
         .route("/api/sessions", get(api_sessions))
         .route("/api/sessions/{id}/download", get(api_download))
         .route("/generate_204", get(generate_204))
@@ -298,6 +398,7 @@ fn main() {
         .route("/connecttest.txt", get(ms_connecttest))
         .route("/ncsi.txt", get(ms_ncsi))
         .fallback(get(index))
+        .layer(middleware::from_fn_with_state(app.clone(), cors))
         .with_state(app);
 
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
