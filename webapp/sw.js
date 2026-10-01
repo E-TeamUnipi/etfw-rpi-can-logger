@@ -2,7 +2,7 @@
 // Network first (to pick up new versions when online), cache as fallback.
 // Only the app's own files: requests to the logger are never touched.
 // Bump VERSION when the file list changes.
-const VERSION = 'canlog-v3';
+const VERSION = 'canlog-v4';
 const FILES = [
   './', './index.html', './app.css', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png',
   './vendor/uPlot.iife.min.js', './vendor/uPlot.min.css',
@@ -13,8 +13,12 @@ const FILES = [
   './js/views/plots.js', './js/views/send.js',
 ];
 
+// Each file on its own: one missing file must not stop the update (an old
+// worker would then stay in charge).
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then(c => Promise.allSettled(FILES.map(f => c.add(f))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
