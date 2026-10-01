@@ -208,8 +208,26 @@ let gattChain = Promise.resolve();
 const gatt = fn => (gattChain = gattChain.then(fn, fn));
 const lastSeen = new Map();
 
+/** Read paged JSON: each read gives [page, count, bytes...] (a GATT value is
+ *  at most 512 bytes). Starts over at page 0 if a read is out of sequence. */
 async function readJson(ch) {
-  return JSON.parse(dec.decode(await gatt(() => ch.readValue())));
+  const parts = [];
+  let count = 0;
+  for (let tries = 0; tries < 300; tries++) {
+    const dv = await gatt(() => ch.readValue());
+    const v = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+    if (v.length < 2) continue;
+    if (v[0] === 0) { parts.length = 0; count = v[1]; }
+    else if (v[0] !== parts.length || v[1] !== count) continue;
+    parts.push(v.slice(2));
+    if (parts.length === count) {
+      const all = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+      let o = 0;
+      for (const p of parts) { all.set(p, o); o += p.length; }
+      return JSON.parse(dec.decode(all));
+    }
+  }
+  throw new Error('Bluetooth read out of sync: update the logger and the app together');
 }
 
 async function pollBle() {

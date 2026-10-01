@@ -34,13 +34,41 @@ const CH_CMD: Uuid = Uuid::from_u128(0x6e7c0004_4f3a_4b8e_9a6d_2c1b0e5f7a10);
 
 const WIFI_OFF_FLAG: &str = "/run/wifi.disabled";
 
+/// A GATT value is at most 512 bytes, so status and live JSON are sent in
+/// pages: each read returns `[page, count, payload...]` and moves to the next
+/// page; a read after the last page takes a new snapshot. Reads at offset > 0
+/// (long reads on a small MTU) continue the current page.
+#[derive(Default)]
+struct Pager {
+    pages: Vec<Vec<u8>>,
+    next: usize,
+    cur: Vec<u8>,
+}
+
+const PAGE: usize = 500;
+
+impl Pager {
+    fn read(&mut self, fresh: impl FnOnce() -> Vec<u8>) -> Vec<u8> {
+        if self.next >= self.pages.len() {
+            let v = fresh();
+            let chunks: Vec<&[u8]> = if v.is_empty() { vec![&[][..]] } else { v.chunks(PAGE).take(255).collect() };
+            let n = chunks.len() as u8;
+            self.pages = chunks.iter().enumerate().map(|(i, c)| [&[i as u8, n][..], c].concat()).collect();
+            self.next = 0;
+        }
+        self.cur = self.pages[self.next].clone();
+        self.next += 1;
+        self.cur.clone()
+    }
+}
+
 struct Ctx {
     ctl: PathBuf,
     pin: Option<String>,
     ssid: String,
     ap_ip: String,
-    /// snapshot per (device, characteristic) for long reads
-    snapshots: Mutex<HashMap<(Address, u8), Vec<u8>>>,
+    /// paged snapshot per (device, characteristic)
+    snapshots: Mutex<HashMap<(Address, u8), Pager>>,
     /// partial command lines per device
     pending: Mutex<HashMap<Address, Vec<u8>>>,
     last_result: Mutex<String>,
@@ -79,7 +107,7 @@ fn set_wifi(on: bool) {
     }
 }
 
-/// Compact status for BLE (full status is ~1-2 KB, this is ~300-600 bytes).
+/// Compact status for BLE (full status is ~1-2 KB, this is ~300-900 bytes).
 async fn status_bytes(ctx: &Ctx) -> Vec<u8> {
     let s = match ctl(&ctx.ctl, &json!({"cmd": "status"})).await {
         Ok(v) => v,
@@ -180,11 +208,11 @@ fn read_char(uuid: Uuid, which: u8, ctx: Arc<Ctx>) -> Characteristic {
                     let key = (req.device_address, which);
                     let off = req.offset as usize;
                     let val = if off == 0 {
-                        let v = if which == 0 { status_bytes(&ctx).await } else { live_bytes(&ctx).await };
-                        ctx.snapshots.lock().unwrap().insert(key, v.clone());
-                        v
+                        let need = ctx.snapshots.lock().unwrap().get(&key).is_none_or(|p| p.next >= p.pages.len());
+                        let fresh = if !need { Vec::new() } else if which == 0 { status_bytes(&ctx).await } else { live_bytes(&ctx).await };
+                        ctx.snapshots.lock().unwrap().entry(key).or_default().read(|| fresh)
                     } else {
-                        ctx.snapshots.lock().unwrap().get(&key).cloned().unwrap_or_default()
+                        ctx.snapshots.lock().unwrap().get(&key).map(|p| p.cur.clone()).unwrap_or_default()
                     };
                     if off > val.len() {
                         return Err(ReqError::InvalidOffset);
@@ -336,4 +364,25 @@ fn main() {
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pages_reassemble() {
+        let data: Vec<u8> = (0..1234u32).map(|i| (i % 251) as u8).collect();
+        let mut p = Pager::default();
+        let mut got = Vec::new();
+        for i in 0..3u8 {
+            let page = p.read(|| data.clone());
+            assert!(page.len() <= 512);
+            assert_eq!(&page[..2], &[i, 3]);
+            got.extend_from_slice(&page[2..]);
+        }
+        assert_eq!(got, data);
+        // after the last page, the next read is page 0 of a new snapshot
+        assert_eq!(&p.read(|| b"{}".to_vec())[..], b"\x00\x01{}");
+    }
 }
